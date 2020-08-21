@@ -1,3 +1,5 @@
+import sys
+sys.path.append("../../gym")
 import gym
 import numpy as np
 

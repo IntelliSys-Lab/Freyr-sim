@@ -139,6 +139,8 @@ dmypy.json
 .DS_Store
 .cache
 .pytest_cache/
+.project
+.pydevproject
 
 # Setuptools distribution and build folders.
 /dist/

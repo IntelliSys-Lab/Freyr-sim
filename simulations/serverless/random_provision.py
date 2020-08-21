@@ -1,3 +1,5 @@
+import sys
+sys.path.append("../../gym")
 import gym
 from gym.envs.serverless.FaaS import Function
 
