@@ -45,7 +45,7 @@ function_4 = Function(
 function_4.set_function(cpu=2, memory=46)
 
 app_1 = Application([function_1, function_2])
-app_1 = Application([function_3, function_4])
+app_2 = Application([function_3, function_4])
 
 repo = [function_1, function_2, function_3, function_4]
 
