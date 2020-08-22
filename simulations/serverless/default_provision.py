@@ -81,7 +81,7 @@ for episode in range(episode_num):
     for t in range(max_timestep):
         print("Timestep {}:".format(t))
         
-        action = env.action_space.sample()
+        action = None
         print("Take action: {}".format(action))
         
         observation, reward, done, info = env.step(action)

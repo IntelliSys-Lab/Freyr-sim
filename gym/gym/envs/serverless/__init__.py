@@ -1,1 +1,1 @@
-from gym.envs.serverless.FaaS import FaaSEnv
+from gym.envs.serverless.faas_env import FaaSEnv
