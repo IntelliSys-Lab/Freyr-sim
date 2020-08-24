@@ -1,8 +1,7 @@
 import sys
-sys.path.append("../../../gym")
+sys.path.append("../../gym")
 import gym
-from gym.envs.serverless.FaaS import Function
-
+from gym.envs.serverless.faas_utils import Function, Application, Profile, Timetable
 
 # Create 4 functions, initially over-provision all the functions
 function_1 = Function(
@@ -45,28 +44,36 @@ function_4 = Function(
     )
 function_4.set_function(cpu=2, memory=46)
 
-repo = [function_1, function_2, function_3, function_4]
+application_1 = Application([function_1, function_2])
+application_2 = Application([function_3, function_4])
+
+function_list = [function_1, function_2, function_3, function_4]
+application_list = [application_1, application_2]
+p = Profile(application_list, function_list)
 
 # Set up timetable
 timetable = []
 timesteps = 120
 
 for i in range(timesteps):
-    time = [0, 0, 0, 0]
+    time = []
     
     if i%1 == 0:
-        time[0] = 1
+        time.append(function_1.function_id)
     if i%2 == 0:
-        time[1] = 1
+        time.append(function_2.function_id)
     if i%8 == 0:
-        time[2] = 1
+        time.append(function_3.function_id)
     if i%10 == 0:
-        time[3] = 1
+        time.append(function_4.function_id)
         
     timetable.append(time)
 
+t = Timetable(timetable)
+
 # Make environment
-env = gym.make("FaaS-v0", repo=repo, timetable=timetable, total_cpu=2*10, total_memory=46*10)
+env = gym.make("FaaS-v0", profile=p, timetable=t, cpu_total=2*10, memory_total=46*10)
+
 
 print(env.action_space.n)
 print(env.observation_space)

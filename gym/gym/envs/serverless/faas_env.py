@@ -1,8 +1,7 @@
 import gym
 from gym import spaces, logger
 import numpy as np
-import copy as cp
-        
+from gym.envs.serverless.faas_utils import Registry, Queue, ResourcePattern, Request
         
 class FaaSEnv(gym.Env):
     """
@@ -10,23 +9,23 @@ class FaaSEnv(gym.Env):
     """
     
     def __init__(self,
-                 repo,
+                 profile,
                  timetable,
-                 total_cpu=2*10,
-                 total_memory=46*10
+                 cpu_total=2*10,
+                 memory_total=46*10
                  ):
-        self.default_repo = repo
+        self.profile = profile
         self.timetable = timetable
-        self.total_cpu = total_cpu
-        self.total_memory = total_memory
+        
+        self.registry = Registry()
+        self.queue = Queue()
+        self.resource_pattern = ResourcePattern(cpu_total=cpu_total, memory_total=memory_total, cluster_registry=self.registry)
         
         self.system_time = 0
-        self.registry = []
-        self.queue = []
         
         # Define action space
         action_space = []
-        for function in self.default_repo:
+        for function in self.profile.function_profile:
             action_space.append(
                 spaces.MultiDiscrete([2-function.cpu_least_hint+1, 46-function.memory_least_hint+1])
                 )
@@ -34,115 +33,57 @@ class FaaSEnv(gym.Env):
         self.action_space = spaces.Tuple(action_space)
         
         # Define observation space
+        cpu_total, memory_total = self.resource_pattern.get_resources_total()
+        registry_size = self.registry.get_size()
+        queue_size = self.queue.get_size()
+        
         self.observation_space = spaces.Dict(
             {
-                "available_resources": spaces.Box(low=np.array([0, 0]), high=np.array([2*10, 46*10]), dtype=np.int32),
-                "undone_requests": spaces.Box(low=np.array([0,0]), high=np.array([100, 100]), dtype=np.int32),
+                "available_resources": spaces.Box(low=np.array([0, 0]), high=np.array([cpu_total, memory_total]), dtype=np.int32),
+                "undone_requests": spaces.Box(low=np.array([0,0]), high=np.array([registry_size, queue_size]), dtype=np.int32),
             })
     
-    # Update settings of functions
-    def update_functions(self, action=None):
+    # Update settings of function profile
+    def update_function_profile(self, action=None):
         if action is not None:
             for i in range(len(action)):
-                next_cpu = self.repo[i].cpu_least_hint + action[i][0]
-                next_memory = self.repo[i].memory_least_hint + action[i][1]
-                        
-                self.repo[i].set_function(cpu=next_cpu, memory=next_memory)
-    
+                next_cpu = self.profile.function_profile[i].cpu_least_hint + action[i][0]
+                next_memory = self.profile.function_profile[i].memory_least_hint + action[i][1]
+                self.profile.function_profile[i].set_function(cpu=next_cpu, memory=next_memory)
+                
     # Update the cluster
     def update_cluster(self):
-        num_timeout = 0
-        
         # 1. Update registry
-        request_done_or_timeout_list = []
-        for request in self.registry:
-            status = request.step(in_registry=True)
-            # Remove finished functions if any
-            if status == 1: # Done requests
-                request_done_or_timeout_list.append(request)
-            elif status == 2: # Timeout requests
-                num_timeout = num_timeout + 1
-                request_done_or_timeout_list.append(request)
-        
-        self.remove_requests(self.registry, request_done_or_timeout_list)
+        request_done_or_timeout_list, num_timeout_registry = self.registry.step()
+        self.registry.delete_requests(request_done_or_timeout_list)
         
         # 2. Update queue
-        request_timeout_list = []
-        for request in self.queue:
-            status = request.step(in_registry=False)
-            # Remove finished functions if any
-            if status == 2: # Timeout requests
-                num_timeout = num_timeout + 1
-                request_timeout_list.append(request)
+        request_timeout_list, num_timeout_queue = self.queue.step()
+        self.queue.delete_requests(request_timeout_list)
         
-        self.remove_requests(self.queue, request_timeout_list)
-        
-        # 3. Try to import queue if available
-        request_ready_list = []
-        for request in self.queue:
-            if self.check_available(request):
-                if len(request_ready_list) == 0:
-                    request_ready_list.append(request)
-                else: # Sort by waiting time
-                    is_inserted = False
-                    for i in range(-1, -len(request_ready_list)-1, -1):
-                        if request_ready_list[i].waiting > request.waiting:
-                            request_ready_list.insert(i+1, request)
-                            is_inserted = True
-                            break
-                    
-                    if is_inserted is False:
-                        request_ready_list.insert(0, request)
-                        
-        # Copy chosen requests to registry and remove them from queue                   
+        # 3. Try to import queue if available, copy chosen requests to registry and remove them from queue    
+        request_ready_list = self.queue.get_ready_quests(self.resource_pattern)
         for request in request_ready_list:
-            if self.check_available(request):
-                request_chosen = cp.deepcopy(request)
-                self.registry.append(request_chosen)
-        
-        self.remove_requests(self.queue, request_ready_list)
+            if self.resource_pattern.check_availablity(request):
+                self.registry.put_requests(request)
+                
+        self.queue.delete_requests(request_ready_list)
                 
         # 4. Try to import timetable if not finished
         # Send requests to registry if queue is empty
         # Otherwise send them to queue
-        if self.system_time < len(self.timetable):
-            time = self.timetable[self.system_time]
-            for function_id in time:
-                for function in self.repo:
+        timestep = self.timetable.get_timestep(self.system_time)
+        if timestep is not None:
+            for function_id in timestep:
+                for function in self.profile.function_profile:
                     if function_id == function.function_id:
-                        request = cp.deepcopy(function) 
-                        if self.check_available(request) and len(self.queue) == 0:
-                            self.registry.append(request)
+                        request = Request(function)
+                        if self.resource_pattern.check_availablity(request) and self.queue.get_current_len() == 0:
+                            self.registry.put_requests(request)
                         else:
-                            self.queue.append(request)
+                            self.queue.put_requests(request)
         
-        return num_timeout
-    
-    """
-    Utilities
-    """
-    # Calculate available resources
-    def get_available(self):
-        cpu_in_use, memory_in_use = 0, 0
-        for request in self.registry:
-            cpu_in_use = cpu_in_use + request.cpu
-            memory_in_use = memory_in_use + request.memory
-            
-        available_cpu = self.total_cpu - cpu_in_use
-        available_memory = self.total_memory - memory_in_use
-        return available_cpu, available_memory
-    
-    # Check whether a given request is valid
-    def check_available(self, request):
-        available_cpu, available_memory = self.get_available()
-        if available_cpu >= request.cpu and available_memory >= request.memory:
-            return True
-        else:
-            return False
-    
-    def remove_requests(self, institution, list):
-        for request in list:
-            institution.remove(request)
+        return num_timeout_registry + num_timeout_queue
         
     """
     Override
@@ -157,25 +98,28 @@ class FaaSEnv(gym.Env):
     
     def step(self, action=None):
         self.system_time = self.system_time + 1
-        self.update_functions(action)
+        self.update_function_profile(action)
         num_timeout = self.update_cluster()
         
         # Get observation for next state
-        available_cpu, available_memory = self.get_available()
+        cpu_available, memory_available = self.resource_pattern.get_resources_available()
+        registry_current_len = self.registry.get_current_len()
+        queue_current_len = self.queue.get_current_len()
+        
         observation = {
-            "available_resources": [available_cpu, available_memory],
-            "undone_requests": [len(self.registry), len(self.queue)],
+            "available_resources": [cpu_available, memory_available],
+            "undone_requests": [registry_current_len, queue_current_len],
         }
         
         # Calculate reward
         reward = -num_timeout*100
-        for request in self.registry:
-            reward = reward + -1/request.duration
-        for request in self.queue:
-            reward = reward + -1/request.duration
+        for request in self.registry.get_requests():
+            reward = reward + -1/request.profile.duration
+        for request in self.queue.get_requests():
+            reward = reward + -1/request.profile.duration
         
         # Done?
-        if self.system_time >= len(self.timetable) and len(self.registry)+len(self.queue) == 0:
+        if self.system_time >= self.timetable.get_size() and registry_current_len+queue_current_len == 0:
             done = True
         else:
             done = False
@@ -187,15 +131,18 @@ class FaaSEnv(gym.Env):
     
     def reset(self):
         self.system_time = 0
-        self.repo = cp.deepcopy(self.default_repo)
         
-        self.registry = []
-        self.queue = []
+        self.profile.reset()
+        self.registry.reset()
+        self.queue.reset()
         
-        available_cpu, available_memory = self.get_available()
+        cpu_available, memory_available = self.resource_pattern.get_resources_available()
+        registry_current_len = self.registry.get_current_len()
+        queue_current_len = self.queue.get_current_len()
+        
         observation = {
-            "available_resources": [available_cpu, available_memory],
-            "undone_requests": [len(self.registry), len(self.queue)],
+            "available_resources": [cpu_available, memory_available],
+            "undone_requests": [registry_current_len, queue_current_len],
         }
         
         return observation
