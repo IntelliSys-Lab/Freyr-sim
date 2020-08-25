@@ -22,36 +22,66 @@ class Function():
     Function used by FaaSEnv
     """
     
-    def __init__(self, 
-                 ideal_cpu=2,
-                 ideal_memory=46,
-                 ideal_duration=50,
-                 cpu_least_hint=1,
-                 memory_least_hint=1,
-                 timeout=60
-                 ):
+    def __init__(self, params):
         self.function_id = uuid.uuid1()
         
-        self.ideal_cpu = ideal_cpu
-        self.ideal_memory = ideal_memory
-        self.ideal_duration = ideal_duration
-        self.cpu_least_hint = cpu_least_hint
-        self.memory_least_hint = memory_least_hint
-        self.timeout = timeout
+        self.params = params
         
         self.progress = 0
         self.waiting = 0
+        self.resource_adjust_direction = [0, 0] # [cpu, memory]
     
     def set_application_id(self, application_id):
         self.application_id = application_id
         
-    def set_function(self, cpu=2, memory=46):
+    def set_function(self, cpu=32, memory=46):
         self.cpu = cpu
         self.memory = memory
         
         # Calculate duration
-        self.duration = self.ideal_duration * np.max([self.ideal_cpu, self.cpu])/self.cpu * np.max([self.ideal_memory, self.memory])/self.memory
+        self.duration = self.params.ideal_duration * np.max([self.params.ideal_cpu, self.cpu])/self.cpu * np.max([self.params.ideal_memory, self.memory])/self.memory
+    
+    def set_resource_adjust(self, resource, adjust):
+        next_cpu = self.cpu
+        next_memory = self.memory
+        
+        if resource == 0:
+            if adjust == 1:
+                next_cpu = next_cpu + 1
+            else:
+                next_cpu = next_cpu - 1
+        else:
+            if adjust == 1:
+                next_memory = next_memory + 1
+            else:
+                next_memory = next_memory - 1
             
+        self.set_function(next_cpu, next_memory)
+
+    def validate_resource_adjust(self, resource, adjust): 
+        if resource == 0:
+            if adjust == 1:
+                if self.cpu == self.params.cpu_cap_per_function:
+                    return False # Implicit invalid action: reach cpu cap
+            else:
+                if self.cpu == 1:
+                    return False # Implicit invalid action: at least one slot
+        else:
+            if adjust == 1:
+                if self.memory == self.params.memory_cap_per_function:
+                    return False # Implicit invalid action: reach memory cap
+            else:
+                if self.memory == 1:
+                    return False # Implicit invalid action: at least one slot
+        
+        if self.resource_adjust_direction[resource] == 0: # Not touched yet
+            return True   
+        else:
+            if self.resource_adjust_direction[resource] == adjust: # Correct direction as usual
+                return True
+            else: # Implicit invalid action: wrong direction
+                return False
+    
     def step(self, in_registry):
         if in_registry is True:
             self.progress = self.progress + 1
@@ -59,7 +89,7 @@ class Function():
             self.waiting = self.waiting + 1
         
         # Return status
-        if self.progress + self.waiting >= self.timeout:
+        if self.progress + self.waiting >= self.params.timeout:
             return "timeout" # Timeout
         
         if self.progress >= self.duration:
@@ -100,7 +130,7 @@ class ResourcePattern():
     
     # Calculate available resources
     def get_resources_available(self):
-        cpu_in_use, memory_in_use = self.cluster_registry.get_resources_in_use()
+        cpu_in_use, memory_in_use = self.get_resources_in_use()
         cpu_available = self.cpu_total - cpu_in_use
         memory_available = self.memory_total - memory_in_use
         return cpu_available, memory_available
@@ -278,12 +308,11 @@ class Timetable():
         self.timetable.append(row)
         
     def get_timestep(self, timestep):
-        if timestep >= len(self.timetable)-1:
+        if timestep >= len(self.timetable):
             return None
         else:
             return self.timetable[timestep]
     
     def get_size(self):
         return self.size
-    
     

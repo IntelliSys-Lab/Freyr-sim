@@ -111,7 +111,7 @@ for episode in range(episode_num):
     system_time = 0
     
     for t in range(max_timestep):
-        action = env.action_space.sample()
+        action = None
         observation, reward, done, info = env.step(action)
         
         if system_time < info["system_time"]:

@@ -36,9 +36,9 @@ class PGAgent():
         self.lr = learning_rate
         self.gamma = discount_factor
 
-        self.obs = []
-        self.acs = []
-        self.rws = []
+        self.observations = []
+        self.actions = []
+        self.rewards = []
 
         self.net = PGNet(n_actions, n_features, 128)
         self.loss = nn.CrossEntropyLoss()
@@ -50,17 +50,17 @@ class PGAgent():
         action = np.random.choice(range(actions.shape[1]), p=actions.view(-1).detach().numpy())
         return action
 
-    def store_transition(self, s, a, r):
-        self.obs.append(s)
-        self.acs.append(a)
-        self.rws.append(r)
+    def store_transition(self, observation, action, reward):
+        self.observations.append(observation)
+        self.actions.append(action)
+        self.rewards.append(reward)
 
     def learn(self):
         self.net.train()
         discount = self.discount_and_norm_rewards()
-        output = self.net(torch.Tensor(self.obs))
-        one_hot = torch.zeros(len(self.acs), self.n_actions).\
-            scatter_(1, torch.LongTensor(self.acs).view(-1,1), 1)
+        output = self.net(torch.Tensor(self.observations))
+        one_hot = torch.zeros(len(self.actions), self.n_actions).\
+            scatter_(1, torch.LongTensor(self.actions).view(-1,1), 1)
         neg = torch.sum(-torch.log(output) * one_hot, 1)
         loss = neg * torch.Tensor(discount)
         loss = loss.mean()
@@ -68,16 +68,16 @@ class PGAgent():
         loss.backward()
         self.optimizer.step()
 
-        self.acs = []
-        self.obs = []
-        self.rws = []
+        self.actions = []
+        self.observations = []
+        self.rewards = []
         return discount
 
     def discount_and_norm_rewards(self):
-        discount = np.zeros_like(self.rws)
+        discount = np.zeros_like(self.rewards)
         tmp = 0
-        for i in reversed(range(len(self.rws))):
-            tmp = tmp * self.gamma + self.rws[i]
+        for i in reversed(range(len(self.rewards))):
+            tmp = tmp * self.gamma + self.rewards[i]
             discount[i] = tmp
 
         discount -= np.mean(discount)
