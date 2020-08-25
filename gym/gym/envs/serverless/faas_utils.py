@@ -64,15 +64,15 @@ class Function():
                 if self.cpu == self.params.cpu_cap_per_function:
                     return False # Implicit invalid action: reach cpu cap
             else:
-                if self.cpu == 1:
-                    return False # Implicit invalid action: at least one slot
+                if self.cpu == self.params.cpu_least_hint:
+                    return False # Implicit invalid action: reach cpu least hint
         else:
             if adjust == 1:
                 if self.memory == self.params.memory_cap_per_function:
                     return False # Implicit invalid action: reach memory cap
             else:
-                if self.memory == 1:
-                    return False # Implicit invalid action: at least one slot
+                if self.memory == self.params.memory_least_hint:
+                    return False # Implicit invalid action: reach memory least hint
         
         if self.resource_adjust_direction[resource] == 0: # Not touched yet
             return True   

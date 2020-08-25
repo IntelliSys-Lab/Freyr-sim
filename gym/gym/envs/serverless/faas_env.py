@@ -24,13 +24,6 @@ class FaaSEnv(gym.Env):
         self.system_time = 0
         
         # Define action space
-#         action_space = []
-#         for function in self.profile.function_profile:
-#             action_space.append(
-#                 spaces.MultiDiscrete([32-function.cpu_least_hint+1, 46-function.memory_least_hint+1])
-#                 )
-#             
-#         self.action_space = spaces.Tuple(action_space)
         self.action_space = spaces.Discrete(len(self.profile.function_profile)*4+1)
         
         # Define observation space
@@ -189,7 +182,7 @@ class FaaSEnv(gym.Env):
         # Done?
         done = self.get_done()
         
-        # No information returned
+        # Return system time
         info = self.get_info()
         
         return observation, reward, done, info
