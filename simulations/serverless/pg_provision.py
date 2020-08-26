@@ -10,7 +10,7 @@ from pg_agent import PGAgent
 
 
 # Set up logger
-logger_wrapper = get_logger("pg_provision")
+logger_wrapper = Logger("pg_provision")
 logger = logger_wrapper.get_logger()
 
 # Generate workflow
@@ -91,6 +91,6 @@ for episode in range(max_episode):
 
 # Plot each episode 
 ploter = Ploter()
-ploter.plot_save("PG", reward_trend, avg_slow_down_trend, timeout_num_trend)
+# ploter.plot_save("PG", reward_trend, avg_slow_down_trend, timeout_num_trend)
 ploter.plot_show("PG", reward_trend, avg_slow_down_trend, timeout_num_trend)
 
