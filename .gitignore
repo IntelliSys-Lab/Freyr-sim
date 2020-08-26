@@ -156,6 +156,7 @@ dmypy.json
 *.sublime-workspace
 
 logs/
+figures/
 
 .ipynb_checkpoints
 ghostdriver.log

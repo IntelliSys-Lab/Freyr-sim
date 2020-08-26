@@ -1,7 +1,8 @@
 import gym
 from gym import spaces, logger
 import numpy as np
-from gym.envs.serverless.faas_utils import Registry, Queue, ResourcePattern, Request
+from gym.envs.serverless.faas_utils import Registry, Queue, ResourcePattern, Request, RequestRecord
+        
         
 class FaaSEnv(gym.Env):
     """
@@ -20,6 +21,7 @@ class FaaSEnv(gym.Env):
         self.registry = Registry()
         self.queue = Queue()
         self.resource_pattern = ResourcePattern(cpu_total=self.params.cpu_total, memory_total=self.params.memory_total, cluster_registry=self.registry)
+        self.request_record = RequestRecord()
         
         self.system_time = 0
         
@@ -31,11 +33,11 @@ class FaaSEnv(gym.Env):
         registry_size = self.registry.get_size()
         queue_size = self.queue.get_size()
         
-        self.observation_space = spaces.Dict(
-            {
-                "available_resources": spaces.Box(low=np.array([0, 0]), high=np.array([cpu_total, memory_total]), dtype=np.int32),
-                "undone_requests": spaces.Box(low=np.array([0,0]), high=np.array([registry_size, queue_size]), dtype=np.int32),
-            })
+        self.observation_space = spaces.Box(
+            low=np.array([0, 0, 0, 0]),
+            high=np.array([cpu_total, memory_total, registry_size, queue_size]),
+            dtype=np.int32
+            )
     
     #
     # Translate discrete action into resource change
@@ -81,10 +83,12 @@ class FaaSEnv(gym.Env):
     def update_cluster(self):
         # 1. Update registry
         request_done_or_timeout_list, num_timeout_registry = self.registry.step()
+        self.request_record.record(request_done_or_timeout_list)
         self.registry.delete_requests(request_done_or_timeout_list)
         
         # 2. Update queue
         request_timeout_list, num_timeout_queue = self.queue.step()
+        self.request_record.record(request_timeout_list)
         self.queue.delete_requests(request_timeout_list)
         
         # 3. Try to import queue if available, copy chosen requests to registry and remove them from queue    
@@ -119,10 +123,7 @@ class FaaSEnv(gym.Env):
         registry_current_len = self.registry.get_current_len()
         queue_current_len = self.queue.get_current_len()
         
-        observation = {
-            "available_resources": [cpu_available, memory_available],
-            "undone_requests": [registry_current_len, queue_current_len],
-        }
+        observation = np.array([cpu_available, memory_available, registry_current_len, queue_current_len])
         
         return observation
     #
@@ -153,7 +154,14 @@ class FaaSEnv(gym.Env):
     # Get info for current timestep
     #
     def get_info(self):
-        return {"system_time": self.system_time}
+        info = {
+            "system_time": self.system_time,
+            "avg_slow_down": self.request_record.get_avg_slow_down(),
+            "avg_completion_time": self.request_record.get_avg_completion_time(),
+            "timeout_num": self.request_record.get_timeout_num()
+            }
+        
+        return info
         
     """
     Override
@@ -193,15 +201,13 @@ class FaaSEnv(gym.Env):
         self.profile.reset()
         self.registry.reset()
         self.queue.reset()
+        self.request_record.reset()
         
         cpu_available, memory_available = self.resource_pattern.get_resources_available()
         registry_current_len = self.registry.get_current_len()
         queue_current_len = self.queue.get_current_len()
         
-        observation = {
-            "available_resources": [cpu_available, memory_available],
-            "undone_requests": [registry_current_len, queue_current_len],
-        }
+        observation = np.array([cpu_available, memory_available, registry_current_len, queue_current_len])
         
         return observation
     

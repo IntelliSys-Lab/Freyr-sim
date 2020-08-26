@@ -1,24 +1,23 @@
 import numpy as np
-import os
-import logging
+import torch
 
 
-timestep = 100
+actions = torch.Tensor([0.1, 0.1, 0.2, 0.2, 0.3, 0.1])
+values = [
+    [1.0, 1.2, 1.5, 2.0],
+    [1.0, 1.1],
+    [0.1],
+    [0.1, 1.0, 8.0]
+    ]
 
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+def zero_padding(values, max_len):
+    for value in values:
+        for i in range(max_len-len(value)):
+            value.append(0)
+            
+    return values
 
-log_path = os.path.dirname(os.getcwd()) + '/serverless/logs/'
-log_name = log_path + "test_timestep_{}.txt".format(timestep)
-
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
-file_handler = logging.FileHandler(log_name, mode='w')
-file_handler.setLevel(logging.INFO)
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
-
-for i in range(timestep):
-    logger.debug("No bug")
-    logger.info("Timestep: {}".format(i))
-    
+values_padded = zero_padding(values, 8)
+print(values_padded)
+print(values)
+# print(np.mean(values, axis=0))

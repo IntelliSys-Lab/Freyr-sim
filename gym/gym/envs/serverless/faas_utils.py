@@ -3,7 +3,6 @@ import copy as cp
 import uuid
 
 
-
 class Application():
     """
     Application used by FaaSEnv
@@ -24,11 +23,7 @@ class Function():
     
     def __init__(self, params):
         self.function_id = uuid.uuid1()
-        
         self.params = params
-        
-        self.progress = 0
-        self.waiting = 0
         self.resource_adjust_direction = [0, 0] # [cpu, memory]
     
     def set_application_id(self, application_id):
@@ -61,18 +56,18 @@ class Function():
     def validate_resource_adjust(self, resource, adjust): 
         if resource == 0:
             if adjust == 1:
-                if self.cpu == self.params.cpu_cap_per_function:
-                    return False # Implicit invalid action: reach cpu cap
+                if self.cpu == self.params.cpu_cap_per_function: # Implicit invalid action: reach cpu cap
+                    return False 
             else:
-                if self.cpu == self.params.cpu_least_hint:
-                    return False # Implicit invalid action: reach cpu least hint
+                if self.cpu == self.params.cpu_least_hint: # Implicit invalid action: reach cpu least hint
+                    return False 
         else:
             if adjust == 1:
-                if self.memory == self.params.memory_cap_per_function:
-                    return False # Implicit invalid action: reach memory cap
+                if self.memory == self.params.memory_cap_per_function: # Implicit invalid action: reach memory cap
+                    return False 
             else:
-                if self.memory == self.params.memory_least_hint:
-                    return False # Implicit invalid action: reach memory least hint
+                if self.memory == self.params.memory_least_hint: # Implicit invalid action: reach memory least hint
+                    return False 
         
         if self.resource_adjust_direction[resource] == 0: # Not touched yet
             return True   
@@ -82,21 +77,6 @@ class Function():
             else: # Implicit invalid action: wrong direction
                 return False
     
-    def step(self, in_registry):
-        if in_registry is True:
-            self.progress = self.progress + 1
-        else:
-            self.waiting = self.waiting + 1
-        
-        # Return status
-        if self.progress + self.waiting >= self.params.timeout:
-            return "timeout" # Timeout
-        
-        if self.progress >= self.duration:
-            return "done" # Done
-        else:
-            return "undone" # Undone
-
 
 class Request():
     """
@@ -106,10 +86,93 @@ class Request():
         self.profile = cp.deepcopy(function)
         self.request_id = uuid.uuid1()
         
+        self.progress = 0
+        self.waiting = 0
+        self.status = "undone"
+        
+    def get_completion_time(self):
+        return self.progress + self.waiting
+    
+    def get_slow_down(self):
+        return self.get_completion_time() / self.profile.duration
+    
     def step(self, in_registry):
-        status = self.profile.step(in_registry)
-        return status
-
+        if in_registry is True:
+            self.progress = self.progress + 1
+        else:
+            self.waiting = self.waiting + 1
+        
+        # Return status
+        if self.progress + self.waiting >= self.profile.params.timeout:
+            self.status = "timeout" # Timeout
+        
+        if self.progress >= self.profile.duration:
+            self.status = "done" # Done
+        
+        return self.status
+        
+class RequestRecord():
+    """
+    Record of finished requests, i.e. done or timeout requests
+    """
+    
+    def __init__(self):
+        self.request_timeout_record = []
+        self.request_done_record = []
+        
+    def record(self, request_list):
+        if isinstance(request_list, Request):
+            request = request_list
+            if request.status == "timeout":
+                self.request_timeout_record.append(request)
+            else:
+                self.request_done_record.append(request)
+        else:
+            for request in request_list:
+                if request.status == "timeout":
+                    self.request_timeout_record.append(request)
+                else:
+                    self.request_done_record.append(request)
+    
+    def get_avg_slow_down(self):
+        slow_down_list = []
+        
+        for request in self.request_timeout_record:
+            slow_down_list.append(request.get_slow_down())
+            
+        for request in self.request_done_record:
+            slow_down_list.append(request.get_slow_down())
+        
+        if len(slow_down_list) == 0:
+            avg_slow_down = 0
+        else:
+            avg_slow_down = np.mean(slow_down_list)
+            
+        return avg_slow_down
+    
+    def get_avg_completion_time(self):
+        completion_time_list = []
+        
+        for request in self.request_timeout_record:
+            completion_time_list.append(request.get_completion_time())
+            
+        for request in self.request_done_record:
+            completion_time_list.append(request.get_completion_time())
+            
+        if len(completion_time_list) == 0:
+            avg_completion_time = 0
+        else:
+            avg_completion_time = np.mean(completion_time_list)
+            
+        return avg_completion_time
+    
+    def get_timeout_num(self):
+        return len(self.request_timeout_record)
+    
+    def reset(self):
+        self.request_timeout_record = []
+        self.request_done_record = []
+        
 
 class ResourcePattern():
     """
@@ -265,7 +328,7 @@ class Queue():
                 else: # Sort by waiting time
                     is_inserted = False
                     for i in range(-1, -len(request_ready_list)-1, -1):
-                        if request_ready_list[i].profile.waiting > request.profile.waiting:
+                        if request_ready_list[i].waiting > request.waiting:
                             request_ready_list.insert(i+1, request)
                             is_inserted = True
                             break
