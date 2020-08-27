@@ -24,6 +24,7 @@ class Function():
     def __init__(self, params):
         self.function_id = uuid.uuid1()
         self.params = params
+        self.request_num = 0
         self.resource_adjust_direction = [0, 0] # [cpu, memory]
     
     def set_application_id(self, application_id):
@@ -35,6 +36,15 @@ class Function():
         
         # Calculate duration
         self.duration = self.params.ideal_duration * np.max([self.params.ideal_cpu, self.cpu])/self.cpu * np.max([self.params.ideal_memory, self.memory])/self.memory
+    
+    def update_request_num(self, new_request_num):
+        self.request_num = self.request_num + new_request_num
+    
+    def get_avg_interval(self, system_time):
+        if system_time == 0:
+            return 0
+        else:
+            return self.request_num / system_time
     
     def set_resource_adjust(self, resource, adjust):
         # Adjust resources

@@ -30,6 +30,7 @@ class FaaSEnv(gym.Env):
         self.system_time = 0
         
         # Define action space
+        # Action space size: 4*m+1
         self.action_space = spaces.Discrete(len(self.profile.function_profile)*4+1)
         
         # Define observation space
@@ -37,11 +38,36 @@ class FaaSEnv(gym.Env):
         registry_size = self.registry.get_size()
         queue_size = self.queue.get_size()
         
-        self.observation_space = spaces.Box(
-            low=np.array([0, 0, 0, 0]), # [available_cpu, available_memory, registry_current_len, queue_current_len]
-            high=np.array([cpu_total, memory_total, registry_size, queue_size]),
-            dtype=np.int32
-            )
+        # Observation space size: 3*m+4
+        #
+        # [available_cpu, 
+        #  available_memory,
+        #  registry_current_len, 
+        #  queue_current_len,
+        #  function_1_cpu,
+        #  function_1_memory,
+        #  function_1_avg_interval,
+        #  .
+        #  .
+        #  .
+        #  function_m_cpu,
+        #  function_m_memory,
+        #  function_m_avg_interval]
+        low = np.ones(3*len(self.profile.function_profile)+4, dtype=np.float32)
+        for i in range(4):
+            low[i] = 0
+            
+        high_part_1 = np.array([cpu_total, memory_total, registry_size, queue_size])
+        high_part_2 = []
+        for function in self.profile.function_profile:
+            high_part_2.append(self.params.cpu_cap_per_function)
+            high_part_2.append(self.params.memory_cap_per_function)
+            high_part_2.append(100)
+        high_part_2 = np.array(high_part_2)
+        
+        high = np.hstack((high_part_1, high_part_2))
+        
+        self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
     
     #
     # Decode discrete action into resource change
@@ -124,6 +150,9 @@ class FaaSEnv(gym.Env):
                             self.registry.put_requests(request)
                         else:
                             self.queue.put_requests(request)
+                        
+                        # Update request number for this function
+                        function.update_request_num(1)
         
         return num_timeout_registry + num_timeout_queue
     
@@ -134,8 +163,16 @@ class FaaSEnv(gym.Env):
         cpu_available, memory_available = self.resource_pattern.get_resources_available()
         registry_current_len = self.registry.get_current_len()
         queue_current_len = self.queue.get_current_len()
+        observation_part_1 = np.array([cpu_available, memory_available, registry_current_len, queue_current_len])
+
+        observation_part_2 = []
+        for function in self.profile.function_profile:
+            observation_part_2.append(function.cpu)
+            observation_part_2.append(function.memory)
+            observation_part_2.append(function.get_avg_interval(self.system_time))
+        observation_part_2 = np.array(observation_part_2)
         
-        observation = np.array([cpu_available, memory_available, registry_current_len, queue_current_len])
+        observation = np.hstack((observation_part_1, observation_part_2))
         
         return observation
     #
@@ -224,7 +261,7 @@ class FaaSEnv(gym.Env):
         registry_current_len = self.registry.get_current_len()
         queue_current_len = self.queue.get_current_len()
         
-        observation = np.array([cpu_available, memory_available, registry_current_len, queue_current_len])
+        observation = self.get_observation()
         
         return observation
     

@@ -33,8 +33,8 @@ env.seed(114514) # Reproducible, policy gradient has high variance
 pg_agent = PGAgent(
     observation_dim=env.observation_space.shape[0],
     action_dim=env.action_space.n,
-    hidden_dims=[20, 20],
-    learning_rate=0.005,
+    hidden_dims=[50, 20],
+    learning_rate=0.001,
     discount_factor=1
     )
 
