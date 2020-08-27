@@ -37,6 +37,7 @@ class Function():
         self.duration = self.params.ideal_duration * np.max([self.params.ideal_cpu, self.cpu])/self.cpu * np.max([self.params.ideal_memory, self.memory])/self.memory
     
     def set_resource_adjust(self, resource, adjust):
+        # Adjust resources
         next_cpu = self.cpu
         next_memory = self.memory
         
@@ -52,6 +53,10 @@ class Function():
                 next_memory = next_memory - 1
             
         self.set_function(next_cpu, next_memory)
+        
+        # Set resource adjust direction if not touched yet
+        if self.resource_adjust_direction[resource] == 0:
+            self.resource_adjust_direction[resource] = adjust
 
     def validate_resource_adjust(self, resource, adjust): 
         if resource == 0:
@@ -76,7 +81,10 @@ class Function():
                 return True
             else: # Implicit invalid action: wrong direction
                 return False
-    
+            
+    def reset_resource_adjust_direction(self):
+        self.resource_adjust_direction = [0, 0]
+        
 
 class Request():
     """
@@ -116,30 +124,41 @@ class RequestRecord():
     Record of finished requests, i.e. done or timeout requests
     """
     
-    def __init__(self):
+    def __init__(self, function_profile):
+        self.function_profile = function_profile
+        
         self.request_timeout_record = []
         self.request_done_record = []
+        self.request_per_function_record = {}
+        for function in self.function_profile:
+            self.request_per_function_record[function.function_id] = []
         
     def record(self, request_list):
         if isinstance(request_list, Request):
             request = request_list
-            if request.status == "timeout":
+            # Classify requests based on status, i.e. timeout or done
+            if request.status == "timeout": 
                 self.request_timeout_record.append(request)
             else:
                 self.request_done_record.append(request)
+                
+            # Classify requests based on function id
+            self.request_per_function_record[request.profile.function_id].append(request)
         else:
             for request in request_list:
+                # Classify requests based on status, i.e. timeout or done
                 if request.status == "timeout":
                     self.request_timeout_record.append(request)
                 else:
                     self.request_done_record.append(request)
-    
+                
+                # Classify requests based on function id
+                self.request_per_function_record[request.profile.function_id].append(request)
+                    
     def get_avg_slow_down(self):
         slow_down_list = []
         
-        for request in self.request_timeout_record:
-            slow_down_list.append(request.get_slow_down())
-            
+        # Only counts done requests
         for request in self.request_done_record:
             slow_down_list.append(request.get_slow_down())
         
@@ -153,9 +172,7 @@ class RequestRecord():
     def get_avg_completion_time(self):
         completion_time_list = []
         
-        for request in self.request_timeout_record:
-            completion_time_list.append(request.get_completion_time())
-            
+        # Only counts done requests
         for request in self.request_done_record:
             completion_time_list.append(request.get_completion_time())
             

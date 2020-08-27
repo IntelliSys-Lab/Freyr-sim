@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import gym
 from gym.envs.serverless.faas_params import EnvParameters
 from logger import Logger
-from ploter import Ploter
+from plotter import Plotter
 from workflow_generator import WorkflowGenerator
 from pg_agent import PGAgent
 
@@ -33,12 +33,12 @@ env.seed(114514) # Reproducible, policy gradient has high variance
 pg_agent = PGAgent(
     observation_dim=env.observation_space.shape[0],
     action_dim=env.action_space.n,
-    hidden_dims=[50, 20],
-    learning_rate=0.008,
+    hidden_dims=[20, 20],
+    learning_rate=0.005,
     discount_factor=1
     )
 
-max_episode = 500
+max_episode = 300
 reward_trend = []
 avg_slow_down_trend = []
 timeout_num_trend = []
@@ -69,6 +69,9 @@ for episode in range(max_episode):
         reward_sum = reward_sum + reward
         
         if done:
+            avg_slow_down = info["avg_slow_down"]
+            timeout_num = info["timeout_num"]
+            
             logger.info("")
             logger.info("**********")
             logger.info("**********")
@@ -78,19 +81,19 @@ for episode in range(max_episode):
             logger.info("{} actual timesteps".format(actual_time))
             logger.info("{} system timesteps".format(system_time))
             logger.info("Total reward: {}".format(reward_sum))
-            
-            value = pg_agent.propagate()
+            logger.info("Avg slow down: {}".format(avg_slow_down))
+            logger.info("Timeout num: {}".format(timeout_num))
             
             reward_trend.append(reward_sum)
-            avg_slow_down_trend.append(info["avg_slow_down"])
-            timeout_num_trend.append(info["timeout_num"])
+            avg_slow_down_trend.append(avg_slow_down)
+            timeout_num_trend.append(timeout_num)
             
             break
         
         observation = next_observation
 
 # Plot each episode 
-ploter = Ploter()
+plotter = Plotter()
 # ploter.plot_save("PG", reward_trend, avg_slow_down_trend, timeout_num_trend)
-ploter.plot_show("PG", reward_trend, avg_slow_down_trend, timeout_num_trend)
+plotter.plot_show(reward_trend, avg_slow_down_trend, timeout_num_trend)
 

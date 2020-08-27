@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import gym
 from gym.envs.serverless.faas_params import EnvParameters
 from logger import Logger
-from ploter import Ploter
+from plotter import Plotter
 from workflow_generator import WorkflowGenerator
 
 
@@ -28,7 +28,7 @@ env_params = EnvParameters(
 env = gym.make("FaaS-v0", params=env_params, profile=profile, timetable=timetable)
 env.seed(114514) # Reproducible, policy gradient has high variance
 
-max_episode = 500
+max_episode = 300
 reward_trend = []
 avg_slow_down_trend = []
 timeout_num_trend = []
@@ -40,9 +40,9 @@ for episode in range(max_episode):
     actual_time = 0
     system_time = 0
     
+    action = env.action_space.n - 1
     while True:
         actual_time = actual_time + 1
-        action = None
         observation, reward, done, info = env.step(action)
         
         if system_time < info["system_time"]:
@@ -58,6 +58,9 @@ for episode in range(max_episode):
         reward_sum = reward_sum + reward
         
         if done:
+            avg_slow_down = info["avg_slow_down"]
+            timeout_num = info["timeout_num"]
+            
             logger.info("")
             logger.info("**********")
             logger.info("**********")
@@ -66,16 +69,18 @@ for episode in range(max_episode):
             logger.info("Episode {} finished after:".format(episode))
             logger.info("{} actual timesteps".format(actual_time))
             logger.info("{} system timesteps".format(system_time))
-            logger.info("total reward is {}".format(reward_sum))
+            logger.info("Total reward: {}".format(reward_sum))
+            logger.info("Avg slow down: {}".format(avg_slow_down))
+            logger.info("Timeout num: {}".format(timeout_num))
             
             reward_trend.append(reward_sum)
-            avg_slow_down_trend.append(info["avg_slow_down"])
-            timeout_num_trend.append(info["timeout_num"])
+            avg_slow_down_trend.append(avg_slow_down)
+            timeout_num_trend.append(timeout_num)
             
             break
 
 # Plot each episode 
-ploter = Ploter()
-ploter.plot_save("Fixed", reward_trend, avg_slow_down_trend, timeout_num_trend)
-ploter.plot_show("Fixed", reward_trend, avg_slow_down_trend, timeout_num_trend)
+plotter = Plotter()
+# ploter.plot_save("Fixed", reward_trend, avg_slow_down_trend, timeout_num_trend)
+plotter.plot_show(reward_trend, avg_slow_down_trend, timeout_num_trend)
 

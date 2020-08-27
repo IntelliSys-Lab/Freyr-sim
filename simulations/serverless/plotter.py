@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import os
 
 
-class Ploter():
+class Plotter():
     """
     Plot trend for each episode
     """
@@ -39,7 +39,6 @@ class Ploter():
         plt.clf()
         
     def plot_show(self,
-                  policy_name,
                   reward_trend, 
                   avg_slow_down_trend, 
                   timeout_num_trend

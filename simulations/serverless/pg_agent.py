@@ -119,13 +119,13 @@ class PGAgent():
     def zero_padding(self, values, max_len):
         values_padded = cp.deepcopy(values)
         
-        if isinstance(values_padded[0], float):
-            for i in range(max_len-len(values_padded)):
-                values_padded.append(0)
-        else:
+        if isinstance(values_padded[0], list):
             for value in values_padded:
                 for i in range(max_len-len(value)):
                     value.append(0)
+        else:
+            for i in range(max_len-len(values_padded)):
+                values_padded.append(0)
                 
         return values_padded
     

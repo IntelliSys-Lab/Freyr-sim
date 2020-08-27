@@ -23,39 +23,39 @@ class WorkflowGenerator():
             ideal_cpu=4, 
             ideal_memory=4, 
             ideal_duration=1, 
-            cpu_least_hint=1, 
-            memory_least_hint=1,
-            timeout=60,
+            cpu_least_hint=2, 
+            memory_least_hint=2,
+            timeout=5,
             cpu_cap_per_function=32,
             memory_cap_per_function=46
             )
         function_params_2 = FunctionParameters(
             ideal_cpu=16, 
             ideal_memory=16, 
-            ideal_duration=5, 
+            ideal_duration=4, 
             cpu_least_hint=8, 
             memory_least_hint=8,
-            timeout=60,
+            timeout=17,
             cpu_cap_per_function=32,
             memory_cap_per_function=46,
             )
         function_params_3 = FunctionParameters(
             ideal_cpu=24, 
             ideal_memory=32, 
-            ideal_duration=30, 
+            ideal_duration=15, 
             cpu_least_hint=12, 
             memory_least_hint=16,
-            timeout=60,
+            timeout=61,
             cpu_cap_per_function=32,
             memory_cap_per_function=46,
             ) 
         function_params_4 = FunctionParameters(
             ideal_cpu=32, 
             ideal_memory=46, 
-            ideal_duration=50, 
+            ideal_duration=30, 
             cpu_least_hint=16, 
             memory_least_hint=23,
-            timeout=60,
+            timeout=121,
             cpu_cap_per_function=32,
             memory_cap_per_function=46,
             )
@@ -84,10 +84,15 @@ class WorkflowGenerator():
         
         for param in function_params:
             function = Function(param)
+#             function.set_function(
+#                 cpu=param.cpu_cap_per_function, 
+#                 memory=param.memory_cap_per_function
+#                 ) # Initially over-provision
+
             function.set_function(
-                cpu=param.cpu_cap_per_function, 
-                memory=param.memory_cap_per_function
-                ) # Initially over-provision
+                cpu=param.cpu_least_hint, 
+                memory=param.memory_least_hint
+                ) # Initially set as hinted
             
             function_list.append(function)
         
@@ -117,9 +122,9 @@ class WorkflowGenerator():
                 time.append(funtion_list[0].function_id)
             if i%2 == 0:
                 time.append(funtion_list[1].function_id)
-            if i%8 == 0:
+            if i%4 == 0:
                 time.append(funtion_list[2].function_id)
-            if i%10 == 0:
+            if i%8 == 0:
                 time.append(funtion_list[3].function_id)
                 
             timetable_list.append(time)

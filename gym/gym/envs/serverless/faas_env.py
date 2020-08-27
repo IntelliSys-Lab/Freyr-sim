@@ -20,8 +20,12 @@ class FaaSEnv(gym.Env):
         
         self.registry = Registry()
         self.queue = Queue()
-        self.resource_pattern = ResourcePattern(cpu_total=self.params.cpu_total, memory_total=self.params.memory_total, cluster_registry=self.registry)
-        self.request_record = RequestRecord()
+        self.resource_pattern = ResourcePattern(
+            cpu_total=self.params.cpu_total, 
+            memory_total=self.params.memory_total, 
+            cluster_registry=self.registry
+            )
+        self.request_record = RequestRecord(profile.function_profile)
         
         self.system_time = 0
         
@@ -34,15 +38,15 @@ class FaaSEnv(gym.Env):
         queue_size = self.queue.get_size()
         
         self.observation_space = spaces.Box(
-            low=np.array([0, 0, 0, 0]),
+            low=np.array([0, 0, 0, 0]), # [available_cpu, available_memory, registry_current_len, queue_current_len]
             high=np.array([cpu_total, memory_total, registry_size, queue_size]),
             dtype=np.int32
             )
     
     #
-    # Translate discrete action into resource change
+    # Decode discrete action into resource change
     #
-    def translate_action(self, action):
+    def decode_action(self, action):
         function_index = int(action/4)
         resource = None
         adjust = 0
@@ -65,18 +69,26 @@ class FaaSEnv(gym.Env):
     #
     # Update settings of function profile based on given action
     #
-    def update_function_profile(self, action=None):
-        if action is not None:
-            if action == len(self.profile.function_profile)*4: # Explicit invalid action
-                return False
-            else:
-                function_index, resource, adjust = self.translate_action(action)
+    def update_function_profile(self, action):
+        if isinstance(action, list): # WARNING! Only used by greedy provision!
+            actions = action
+            for act in actions:
+                function_index, resource, adjust = self.decode_action(act)
                 if self.profile.function_profile[function_index].validate_resource_adjust(resource, adjust) is True:
                     self.profile.function_profile[function_index].set_resource_adjust(resource, adjust)
-                    return True
-                else:
-                    return False # Implicit invalid action
-                
+            
+            return True
+        
+        if action == self.action_space.n - 1: # Explicit invalid action
+            return False
+        else:
+            function_index, resource, adjust = self.decode_action(action)
+            if self.profile.function_profile[function_index].validate_resource_adjust(resource, adjust) is True:
+                self.profile.function_profile[function_index].set_resource_adjust(resource, adjust)
+                return True
+            else:
+                return False # Implicit invalid action
+
     #            
     # Update the cluster
     #
@@ -158,7 +170,8 @@ class FaaSEnv(gym.Env):
             "system_time": self.system_time,
             "avg_slow_down": self.request_record.get_avg_slow_down(),
             "avg_completion_time": self.request_record.get_avg_completion_time(),
-            "timeout_num": self.request_record.get_timeout_num()
+            "timeout_num": self.request_record.get_timeout_num(),
+            "request_record": self.request_record
             }
         
         return info
@@ -183,6 +196,10 @@ class FaaSEnv(gym.Env):
             self.system_time = self.system_time + 1
             num_timeout = self.update_cluster()
             reward = self.get_reward(num_timeout)
+            
+            # Reset resource adjust direction for each function 
+            for function in self.profile.function_profile:
+                function.reset_resource_adjust_direction()
             
         # Get observation for next state
         observation = self.get_observation()
