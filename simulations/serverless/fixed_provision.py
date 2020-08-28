@@ -18,17 +18,17 @@ profile, timetable = workflow_generator.generate_workflow()
 
 # Set paramters for FaaSEnv
 env_params = EnvParameters(
-    cpu_total=32*10,
-    memory_total=46*10,
+    cpu_total=32*100,
+    memory_total=45*100,
     cpu_cap_per_function=32,
-    memory_cap_per_function=46
+    memory_cap_per_function=45
     )
 
 # Make environment
 env = gym.make("FaaS-v0", params=env_params, profile=profile, timetable=timetable)
 env.seed(114514) # Reproducible, policy gradient has high variance
 
-max_episode = 300
+max_episode = 500
 reward_trend = []
 avg_slow_down_trend = []
 timeout_num_trend = []

@@ -15,7 +15,8 @@ class Plotter():
                   policy_name,
                   reward_trend, 
                   avg_slow_down_trend, 
-                  timeout_num_trend
+                  timeout_num_trend,
+                  loss_trend=None
                   ):
         fig_1 = plt.figure('Total Reward Trend', figsize = (6,4)).add_subplot(111)
         fig_1.plot(reward_trend)
@@ -38,10 +39,19 @@ class Plotter():
         plt.savefig(self.fig_path + policy_name + "_Timeout_Num_Trend.png")
         plt.clf()
         
+        if loss_trend is not None:
+            fig_4 = plt.figure('Loss Trend', figsize = (6,4)).add_subplot(111)
+            fig_4.plot(loss_trend)
+            fig_4.set_xlabel("Episode")
+            fig_4.set_ylabel("Loss")
+            plt.savefig(self.fig_path + policy_name + "_Loss_Trend.png")
+        
+        
     def plot_show(self,
                   reward_trend, 
                   avg_slow_down_trend, 
-                  timeout_num_trend
+                  timeout_num_trend,
+                  loss_trend=None
                   ):
         fig_1 = plt.figure('Total Reward Trend', figsize = (6,4)).add_subplot(111)
         fig_1.plot(reward_trend)
@@ -57,6 +67,12 @@ class Plotter():
         fig_3.plot(timeout_num_trend)
         fig_3.set_xlabel("Episode")
         fig_3.set_ylabel("Timeout num")
+        
+        if loss_trend is not None:
+            fig_4 = plt.figure('Loss Trend', figsize = (6,4)).add_subplot(111)
+            fig_4.plot(loss_trend)
+            fig_4.set_xlabel("Episode")
+            fig_4.set_ylabel("Loss")
         
         plt.show()
         

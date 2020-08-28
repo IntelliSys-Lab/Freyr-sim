@@ -107,7 +107,7 @@ class PGAgent():
         self.actions = []
         self.rewards = []
         
-        return value
+        return value, loss
     
     def one_hot(self, indices, depth):
         dim = 1

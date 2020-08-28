@@ -370,10 +370,10 @@ class Profile():
     Record settings of any functions that submitted to FaaSEnv
     """
     
-    def __init__(self, application_list, function_list):
-        self.application_profile = application_list
-        self.function_profile = function_list
-        self.default_function_profile = function_list
+    def __init__(self, function_profile, application_profile):
+        self.application_profile = application_profile
+        self.function_profile = function_profile
+        self.default_function_profile = function_profile
         
     def put_application(self, application):
         self.application_profile.append(application)

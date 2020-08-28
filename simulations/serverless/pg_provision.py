@@ -19,10 +19,10 @@ profile, timetable = workflow_generator.generate_workflow()
 
 # Set paramters for FaaSEnv
 env_params = EnvParameters(
-    cpu_total=32*10,
-    memory_total=46*10,
+    cpu_total=32*100,
+    memory_total=45*100,
     cpu_cap_per_function=32,
-    memory_cap_per_function=46
+    memory_cap_per_function=45
     )
 
 # Make environment
@@ -34,14 +34,15 @@ pg_agent = PGAgent(
     observation_dim=env.observation_space.shape[0],
     action_dim=env.action_space.n,
     hidden_dims=[50, 20],
-    learning_rate=0.001,
+    learning_rate=0.005,
     discount_factor=1
     )
 
-max_episode = 300
+max_episode = 500
 reward_trend = []
 avg_slow_down_trend = []
 timeout_num_trend = []
+loss_trend = []
 
 # Start random provision
 for episode in range(max_episode):
@@ -69,6 +70,7 @@ for episode in range(max_episode):
         reward_sum = reward_sum + reward
         
         if done:
+            value, loss = pg_agent.propagate()
             avg_slow_down = info["avg_slow_down"]
             timeout_num = info["timeout_num"]
             
@@ -83,10 +85,12 @@ for episode in range(max_episode):
             logger.info("Total reward: {}".format(reward_sum))
             logger.info("Avg slow down: {}".format(avg_slow_down))
             logger.info("Timeout num: {}".format(timeout_num))
+            logger.info("Loss: {}".format(loss))
             
             reward_trend.append(reward_sum)
             avg_slow_down_trend.append(avg_slow_down)
             timeout_num_trend.append(timeout_num)
+            loss_trend.append(loss)
             
             break
         
@@ -94,6 +98,6 @@ for episode in range(max_episode):
 
 # Plot each episode 
 plotter = Plotter()
-# ploter.plot_save("PG", reward_trend, avg_slow_down_trend, timeout_num_trend)
-plotter.plot_show(reward_trend, avg_slow_down_trend, timeout_num_trend)
+# ploter.plot_save("PG", reward_trend, avg_slow_down_trend, timeout_num_trend, loss_trend)
+plotter.plot_show(reward_trend, avg_slow_down_trend, timeout_num_trend, loss_trend)
 

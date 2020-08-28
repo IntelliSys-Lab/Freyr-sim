@@ -179,7 +179,7 @@ class FaaSEnv(gym.Env):
     # Calculate reward for current timestep
     #
     def get_reward(self, num_timeout):
-        reward = -num_timeout*100
+        reward = -num_timeout*1000
         for request in self.registry.get_requests():
             reward = reward + -1/request.profile.duration
         for request in self.queue.get_requests():
@@ -256,10 +256,6 @@ class FaaSEnv(gym.Env):
         self.registry.reset()
         self.queue.reset()
         self.request_record.reset()
-        
-        cpu_available, memory_available = self.resource_pattern.get_resources_available()
-        registry_current_len = self.registry.get_current_len()
-        queue_current_len = self.queue.get_current_len()
         
         observation = self.get_observation()
         

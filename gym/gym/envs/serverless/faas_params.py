@@ -3,11 +3,11 @@ import numpy as np
 
 class EnvParameters():
     """
-    Parameters used by FaaSEnv
+    Parameters used for generating FaaSEnv
     """
     def __init__(self,
                  cpu_total=32*10,
-                 memory_total=46*10,
+                 memory_total=45*10,
                  cpu_cap_per_function=32,
                  memory_cap_per_function=46
                  ):
@@ -19,14 +19,14 @@ class EnvParameters():
         
 class FunctionParameters():
     """
-    Parameters used by Function
+    Parameters used for generating Function
     """
     def __init__(self,
                  ideal_cpu=32,
-                 ideal_memory=46,
-                 ideal_duration=50,
+                 ideal_memory=45,
+                 ideal_duration=30,
                  cpu_cap_per_function=32,
-                 memory_cap_per_function=46,
+                 memory_cap_per_function=45,
                  cpu_least_hint=1,
                  memory_least_hint=1,
                  timeout=60
@@ -40,3 +40,26 @@ class FunctionParameters():
         self.memory_least_hint = memory_least_hint
         self.timeout = timeout
         
+        
+class TimetableParameters():
+    """
+    Parameters used for generating Timetable
+    """
+    def __init__(self,
+                 max_timestep=200,
+                 distribution_type="poisson",
+                 mod_factors=[1, 1, 1, 1, 1, 2, 5, 8, 10, 8],
+                 bernoulli_p=0.5,
+                 poisson_mu=0.8
+                 ):
+        self.max_timestep = max_timestep
+        self.distribution_type = distribution_type
+        
+        if distribution_type == "mod":
+            self.mod_factors = mod_factors
+        elif distribution_type == "bernoulli":
+            self.bernoulli_p = bernoulli_p
+        elif distribution_type == "poisson":
+            self.poisson_mu = poisson_mu
+    
+    
