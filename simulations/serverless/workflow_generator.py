@@ -10,14 +10,6 @@ class WorkflowGenerator():
     """
     Generate workflows running on FaaSEnv
     """
-    
-    def __init__(self, 
-                 profile_params=None,
-                 timetable_params=None,
-                 ):
-        self.profile_params = profile_params
-        self.timetable_params = timetable_params
-    
     def default_params(self):
         # Generate profile parameters
         ET_Image_Resizing_params = FunctionParameters(
@@ -128,17 +120,17 @@ class WorkflowGenerator():
 #             ET_Stock_Analysis_params,
 #             ET_File_Encrypt_params,
 #             ET_Sentiment_Review_params,
-#             MP_Nearest_Neighbor_params,
-#             MP_Comp_Fluid_Dynamics_params,
-            MP_Sorting_params,
-            MP_Matrix_Multiply_params
+            MP_Nearest_Neighbor_params,
+            MP_Comp_Fluid_Dynamics_params,
+#             MP_Sorting_params,
+#             MP_Matrix_Multiply_params
             ]
         application_params = []
         
         profile_params = [function_params, application_params]
         
         # Generate timetable parameters
-        mod = [2, 2, 30, 30]
+        mod = [2, 2, 2, 2, 2, 5, 30, 30, 30, 30]
         
         timetable_params = TimetableParameters(
             max_timestep=200, 
