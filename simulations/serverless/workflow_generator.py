@@ -116,14 +116,14 @@ class WorkflowGenerator():
         function_params = [
             ET_Image_Resizing_params, 
             ET_Streaming_Analytics_params,
-#             ET_Email_Gen_params,
-#             ET_Stock_Analysis_params,
-#             ET_File_Encrypt_params,
-#             ET_Sentiment_Review_params,
+            ET_Email_Gen_params,
+            ET_Stock_Analysis_params,
+            ET_File_Encrypt_params,
+            ET_Sentiment_Review_params,
             MP_Nearest_Neighbor_params,
             MP_Comp_Fluid_Dynamics_params,
-#             MP_Sorting_params,
-#             MP_Matrix_Multiply_params
+            MP_Sorting_params,
+            MP_Matrix_Multiply_params
             ]
         application_params = []
         

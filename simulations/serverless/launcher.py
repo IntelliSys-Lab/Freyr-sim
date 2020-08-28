@@ -18,7 +18,7 @@ def launch():
     
     timetable_params = TimetableParameters(max_timestep=200,
                                            distribution_type="mod",
-                                           mod_factors=[1, 1, 30, 30]
+                                           mod_factors=[2, 2, 2, 2, 2, 5, 30, 30, 30, 30]
                                            )
 #     timetable_params = TimetableParameters(max_timestep=200,
 #                                            distribution_type="bernoulli",
@@ -43,22 +43,22 @@ def launch():
     max_episode = 500
     
     # Start simulations
-#     fixed_provision(profile=profile,
-#                     timetable=timetable,
-#                     env_params=env_params,
-#                     max_episode=max_episode,
-#                     plot_prefix_name="Fixed_Mod_No_Timeout",
-#                     save_plot=True,
-#                     show_plot=False
-#                     )
-#     greedy_provision(profile=profile,
-#                      timetable=timetable,
-#                      env_params=env_params,
-#                      max_episode=max_episode,
-#                      plot_prefix_name="Greedy_Mod_No_Timeout",
-#                      save_plot=True,
-#                      show_plot=False
-#                      )
+    fixed_provision(profile=profile,
+                    timetable=timetable,
+                    env_params=env_params,
+                    max_episode=max_episode,
+                    plot_prefix_name="Fixed_Mod_No_Timeout",
+                    save_plot=True,
+                    show_plot=False
+                    )
+    greedy_provision(profile=profile,
+                     timetable=timetable,
+                     env_params=env_params,
+                     max_episode=max_episode,
+                     plot_prefix_name="Greedy_Mod_No_Timeout",
+                     save_plot=True,
+                     show_plot=False
+                     )
     pg_provision(profile=profile,
                  timetable=timetable,
                  env_params=env_params,
