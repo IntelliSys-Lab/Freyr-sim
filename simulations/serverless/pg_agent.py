@@ -93,11 +93,12 @@ class PGAgent():
         
         value = self.discount_and_norm_rewards()
         baseline = self.compute_naive_baseline(value)
+        advantage = value - baseline
         
         output = self.net(torch.Tensor(self.observations))
         one_hot = self.one_hot(self.actions, self.action_dim)
         neg_log_prob = torch.sum(-torch.log(output) * one_hot, 1)
-        loss = (neg_log_prob * torch.Tensor(value - baseline)).mean()
+        loss = (neg_log_prob * torch.Tensor(advantage)).mean()
         
         self.optimizer.zero_grad()
         loss.backward()
@@ -107,7 +108,7 @@ class PGAgent():
         self.actions = []
         self.rewards = []
         
-        return value, loss
+        return loss
     
     def one_hot(self, indices, depth):
         dim = 1

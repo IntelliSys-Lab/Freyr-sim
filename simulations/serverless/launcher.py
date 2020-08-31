@@ -47,24 +47,24 @@ def launch():
                     timetable=timetable,
                     env_params=env_params,
                     max_episode=max_episode,
-                    plot_prefix_name="Fixed_Mod_No_Timeout",
-                    save_plot=True,
+                    plot_prefix_name="Fixed_Mod",
+                    save_plot=False,
                     show_plot=False
                     )
     greedy_provision(profile=profile,
                      timetable=timetable,
                      env_params=env_params,
                      max_episode=max_episode,
-                     plot_prefix_name="Greedy_Mod_No_Timeout",
-                     save_plot=True,
+                     plot_prefix_name="Greedy_Mod",
+                     save_plot=False,
                      show_plot=False
                      )
     pg_provision(profile=profile,
                  timetable=timetable,
                  env_params=env_params,
                  max_episode=max_episode,
-                 plot_prefix_name="PG_Mod_No_Timeout",
-                 save_plot=True,
+                 plot_prefix_name="PG_Mod",
+                 save_plot=False,
                  show_plot=False
                  )
     

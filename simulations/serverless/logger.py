@@ -12,19 +12,26 @@ class Logger():
                  ):
         self.file_name = file_name
         self.log_path = log_path
-
-    def get_logger(self):
-        logger = logging.getLogger()
-        logger.setLevel(logging.DEBUG)
+        
+        self.logger = logging.getLogger()
+        self.logger.setLevel(logging.DEBUG)
     
         log_name = self.log_path + "{}.txt".format(self.file_name)
     
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        file_handler = logging.FileHandler(log_name, mode='w')
-        file_handler.setLevel(logging.DEBUG)
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
+        self.console_handler = logging.StreamHandler()
+        self.console_handler.setLevel(logging.INFO)
+        self.file_handler = logging.FileHandler(log_name, mode='w')
+        self.file_handler.setLevel(logging.DEBUG)
+        
+        self.logger.addHandler(self.file_handler)
+        self.logger.addHandler(self.console_handler)
+
+    def get_logger(self):
+        return self.logger
     
-        return logger
-    
+    def shutdown_logger(self):
+        handler_list = [self.console_handler, self.file_handler]
+#         logging.shutdown(handler_list)
+        logging.shutdown()
+        
+        

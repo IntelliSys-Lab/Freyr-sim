@@ -149,4 +149,5 @@ def greedy_provision(profile,
     if show_plot is True:
         plotter.plot_show(reward_trend, avg_slow_down_trend, timeout_num_trend)
 
+    logger_wrapper.shutdown_logger()
     
