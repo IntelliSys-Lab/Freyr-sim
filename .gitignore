@@ -141,6 +141,7 @@ dmypy.json
 .pytest_cache/
 .project
 .pydevproject
+.vscode
 
 # Setuptools distribution and build folders.
 /dist/
