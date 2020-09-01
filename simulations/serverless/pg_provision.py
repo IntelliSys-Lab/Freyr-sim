@@ -4,21 +4,24 @@ import matplotlib.pyplot as plt
 import gym
 from logger import Logger
 from plotter import Plotter
-from pg_agent import PGAgent
+from pg_reinforce_agent import ReinforceAgent
+from pg_ppo2_agent import PPO2Agent
 
 
 
 #
 # Policy gradient provision strategy
 #
-def pg_provision(profile,
-                 timetable,
-                 env_params,
-                 max_episode=500,
-                 plot_prefix_name="PG",
-                 save_plot=False,
-                 show_plot=True,
-                 ):
+def pg_provision(
+    profile,
+    timetable,
+    env_params,
+    max_episode=500,
+    plot_prefix_name="PG",
+    save_plot=False,
+    show_plot=True,
+    agent="ppo2"
+):
     # Set up logger
     logger_wrapper = Logger("pg_provision")
     logger = logger_wrapper.get_logger()
@@ -28,14 +31,26 @@ def pg_provision(profile,
     env.seed(114514) # Reproducible, policy gradient has high variance
     
     # Set up policy gradient agent
-    pg_agent = PGAgent(
-        observation_dim=env.observation_space.shape[0],
-        action_dim=env.action_space.n,
-        hidden_dims=[50, 20],
-        learning_rate=0.005,
-        discount_factor=1
+    if agent == "reinforce":
+        pg_agent = ReinforceAgent(
+            observation_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.n,
+            hidden_dims=[50, 20],
+            learning_rate=0.003,
+            discount_factor=1
+        )
+    elif agent == "ppo2":
+        pg_agent = PPO2Agent(
+            observation_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.n,
+            hidden_dims=[50, 20],
+            learning_rate=0.003,
+            discount_factor=1,
+            ppo_clip=0.2,
+            ppo_steps=5
         )
     
+    # Trends recording
     reward_trend = []
     avg_slow_down_trend = []
     timeout_num_trend = []
@@ -44,15 +59,36 @@ def pg_provision(profile,
     # Start random provision
     for episode in range(max_episode):
         observation = env.reset()
+        pg_agent.reset()
+
         actual_time = 0
         system_time = 0
         reward_sum = 0
         
         while True:
             actual_time = actual_time + 1
-            action = pg_agent.choose_action(observation)
+            
+            if agent == "reinforce":
+                action = pg_agent.choose_action(observation)
+            elif agent == "ppo2":
+                action, value_pred, log_prob = pg_agent.choose_action(observation)
+            
             next_observation, reward, done, info = env.step(action)
-            pg_agent.record_trajectory(observation, action, reward)
+
+            if agent == "reinforce":
+                pg_agent.record_trajectory(
+                    observation=observation,
+                    action=action, 
+                    reward=reward
+                )
+            elif agent == "ppo2":   
+                pg_agent.record_trajectory(
+                    observation=observation, 
+                    action=action, 
+                    reward=reward,
+                    value=value_pred,
+                    log_prob=log_prob
+                )
             
             if system_time < info["system_time"]:
                 system_time = info["system_time"]

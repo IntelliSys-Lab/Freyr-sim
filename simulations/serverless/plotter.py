@@ -6,18 +6,20 @@ class Plotter():
     """
     Plot trend for each episode
     """
-    def __init__(self,
-                 fig_path=os.path.dirname(os.getcwd())+"/serverless/figures/"
-                 ):
+    def __init__(
+        self,
+        fig_path=os.path.dirname(os.getcwd())+"/serverless/figures/"
+    ):
         self.fig_path = fig_path
     
-    def plot_save(self,
-                  prefix_name,
-                  reward_trend, 
-                  avg_slow_down_trend, 
-                  timeout_num_trend,
-                  loss_trend=None
-                  ):
+    def plot_save(
+        self,
+        prefix_name,
+        reward_trend, 
+        avg_slow_down_trend, 
+        timeout_num_trend,
+        loss_trend=None
+    ):
         fig_1 = plt.figure('Total Reward Trend', figsize = (6,4)).add_subplot(111)
         fig_1.plot(reward_trend)
         fig_1.set_xlabel("Episode")
@@ -46,13 +48,13 @@ class Plotter():
             fig_4.set_ylabel("Loss")
             plt.savefig(self.fig_path + prefix_name + "_Loss_Trend.png")
         
-        
-    def plot_show(self,
-                  reward_trend, 
-                  avg_slow_down_trend, 
-                  timeout_num_trend,
-                  loss_trend=None
-                  ):
+    def plot_show(
+        self,
+        reward_trend, 
+        avg_slow_down_trend, 
+        timeout_num_trend,
+        loss_trend=None
+    ):
         fig_1 = plt.figure('Total Reward Trend', figsize = (6,4)).add_subplot(111)
         fig_1.plot(reward_trend)
         fig_1.set_xlabel("Episode")

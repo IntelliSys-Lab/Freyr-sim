@@ -177,3 +177,8 @@ tutorial/*.html
 .idea
 vizdoom.ini
 /vendor/
+
+#
+# Azure Functions Tracecs
+#
+azurefunctions-dataset2019/

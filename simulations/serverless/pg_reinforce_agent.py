@@ -46,7 +46,7 @@ class PGNet(nn.Module):
         return x
 
 
-class PGAgent():
+class ReinforceAgent():
     def __init__(
             self,
             observation_dim,
@@ -57,6 +57,7 @@ class PGAgent():
             ):
         self.observation_dim = observation_dim
         self.action_dim = action_dim
+        self.hidden_dims = hidden_dims
         self.lr = learning_rate
         self.gamma = discount_factor
 
@@ -69,11 +70,12 @@ class PGAgent():
         
         self.net = PGNet(
             observation_dim=self.observation_dim,
-            hidden_dims=hidden_dims,
+            hidden_dims=self.hidden_dims,
             action_dim=self.action_dim,
             )
         self.loss = nn.CrossEntropyLoss()
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=learning_rate)
+        # self.optimizer = torch.optim.Adam(self.net.parameters(), lr=learning_rate)
+        self.optimizer = torch.optim.RMSprop(self.net.parameters(), lr=learning_rate)
 
     def choose_action(self, observation):
         self.net.eval()
@@ -91,7 +93,7 @@ class PGAgent():
     def propagate(self):
         self.net.train()
         
-        value = self.discount_and_norm_rewards()
+        value = self.discount_rewards()
         baseline = self.compute_naive_baseline(value)
         advantage = value - baseline
         
@@ -104,10 +106,8 @@ class PGAgent():
         loss.backward()
         self.optimizer.step()
 
-        self.observations = []
-        self.actions = []
-        self.rewards = []
-        
+        self.reset()
+
         return loss
     
     def one_hot(self, indices, depth):
@@ -145,16 +145,24 @@ class PGAgent():
         
         return baseline
 
-    def discount_and_norm_rewards(self):
-        value = np.zeros_like(self.rewards)
+    def norm(self, x):
+        x = x - np.mean(x)
+        x = x / np.std(x)
+
+        return x
+
+    def discount_rewards(self):
+        discounted_rewards = np.zeros_like(self.rewards)
         tmp = 0
         for i in reversed(range(len(self.rewards))):
             tmp = tmp * self.gamma + self.rewards[i]
-            value[i] = tmp
+            discounted_rewards[i] = tmp
 
-#         value = value - np.mean(value)
-#         value = value / np.std(value)
+        return discounted_rewards
 
-        return value
+    def reset(self):
+        self.observations = []
+        self.actions = []
+        self.rewards = []
     
     

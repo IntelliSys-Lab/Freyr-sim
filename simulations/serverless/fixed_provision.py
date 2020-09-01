@@ -10,14 +10,15 @@ from plotter import Plotter
 #
 # Fixed provision strategy
 #
-def fixed_provision(profile,
-                    timetable,
-                    env_params,
-                    max_episode=500,
-                    plot_prefix_name="Fixed",
-                    save_plot=False,
-                    show_plot=True,
-                    ):
+def fixed_provision(
+    profile,
+    timetable,
+    env_params,
+    max_episode=500,
+    plot_prefix_name="Fixed",
+    save_plot=False,
+    show_plot=True,
+):
     # Set up logger
     logger_wrapper = Logger("fixed_provision")
     logger = logger_wrapper.get_logger()

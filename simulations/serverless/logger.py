@@ -6,10 +6,11 @@ class Logger():
     """
     Log information to console and/or file
     """
-    def __init__(self, 
-                 file_name, 
-                 log_path=os.path.dirname(os.getcwd())+'/serverless/logs/'
-                 ):
+    def __init__(
+        self, 
+        file_name, 
+        log_path=os.path.dirname(os.getcwd())+'/serverless/logs/'
+    ):
         self.file_name = file_name
         self.log_path = log_path
         

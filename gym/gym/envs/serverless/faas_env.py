@@ -9,11 +9,12 @@ class FaaSEnv(gym.Env):
     Function-as-a-Service environment.
     """
     
-    def __init__(self,
-                 params,
-                 profile,
-                 timetable
-                 ):
+    def __init__(
+        self,
+        params,
+        profile,
+        timetable
+    ):
         self.params = params
         self.profile = profile
         self.timetable = timetable
@@ -209,7 +210,7 @@ class FaaSEnv(gym.Env):
             "avg_completion_time": self.request_record.get_avg_completion_time(),
             "timeout_num": self.request_record.get_timeout_num(),
             "request_record": self.request_record
-            }
+        }
         
         return info
         

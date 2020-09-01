@@ -3,18 +3,23 @@ import copy as cp
 import uuid
 
 
+
 class Application():
     """
     Application used by FaaSEnv
     """
     def __init__(self, functions):
-        self.application_id = uuid.uuid1()
-        self.function_ids = []
+        if functions[0].application_id != None:
+            self.application_id = functions[0].application_id
+        else:
+            self.application_id = uuid.uuid1()
         
+        self.function_ids = []
+            
         for function in functions:
-            self.function_ids.append(function.function_id)
             function.set_application_id(self.application_id)
-
+            self.function_ids.append(function.function_id)
+            
 
 class Function():
     """
@@ -22,8 +27,15 @@ class Function():
     """
     
     def __init__(self, params):
-        self.function_id = uuid.uuid1()
         self.params = params
+        
+        if self.params.function_id != None:
+            self.function_id = self.params.function_id
+        else:
+            self.function_id = uuid.uuid1()
+        
+        self.application_id = self.params.application_id
+
         self.request_num = 0
         self.resource_adjust_direction = [0, 0] # [cpu, memory]
     

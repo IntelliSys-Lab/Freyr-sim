@@ -16,58 +16,84 @@ def launch():
     # Generate workflow
     workflow_generator = WorkflowGenerator()
     
-    timetable_params = TimetableParameters(max_timestep=200,
-                                           distribution_type="mod",
-                                           mod_factors=[2, 2, 2, 2, 2, 5, 30, 30, 30, 30]
-                                           )
-#     timetable_params = TimetableParameters(max_timestep=200,
-#                                            distribution_type="bernoulli",
-#                                            bernoulli_p=0.5
-#                                            )
-#     timetable_params = TimetableParameters(max_timestep=200,
-#                                            distribution_type="poisson",
-#                                            poisson_mu=0.8
-#                                            )
+    # timetable_params = TimetableParameters(
+    #     max_timestep=200,
+    #     distribution_type="mod",
+    #     mod_factors=[2, 2, 2, 2, 2, 5, 30, 30, 30, 30]
+    # )
+    # timetable_params = TimetableParameters(
+    #     max_timestep=200,
+    #     distribution_type="bernoulli",
+    #     bernoulli_p=0.5
+    # )
+    # timetable_params = TimetableParameters(
+    #     max_timestep=200,
+    #     distribution_type="poisson",
+    #     poisson_mu=0.8
+    # )
+
+    # profile, timetable = workflow_generator.generate_workflow(
+    #     default="ensure",
+    #     timetable_params=timetable_params
+    # )
+
+    timetable_params = None # Azure traces
     
-    profile, timetable = workflow_generator.generate_workflow(timetable_params=timetable_params)
+    profile, timetable = workflow_generator.generate_workflow(
+        default="azure",
+        timetable_params=timetable_params
+    )
     
     # Set paramters for FaaSEnv
     env_params = EnvParameters(
-        cpu_total=32*1000,
-        memory_total=45*1000,
+        cpu_total=32*100,
+        memory_total=45*100,
         cpu_cap_per_function=32,
         memory_cap_per_function=45
-        )
+    )
     
     # Number of max episode
-    max_episode = 500
+    max_episode = 300
     
     # Start simulations
-    fixed_provision(profile=profile,
-                    timetable=timetable,
-                    env_params=env_params,
-                    max_episode=max_episode,
-                    plot_prefix_name="Fixed_Mod",
-                    save_plot=False,
-                    show_plot=False
-                    )
-    greedy_provision(profile=profile,
-                     timetable=timetable,
-                     env_params=env_params,
-                     max_episode=max_episode,
-                     plot_prefix_name="Greedy_Mod",
-                     save_plot=False,
-                     show_plot=False
-                     )
-    pg_provision(profile=profile,
-                 timetable=timetable,
-                 env_params=env_params,
-                 max_episode=max_episode,
-                 plot_prefix_name="PG_Mod",
-                 save_plot=False,
-                 show_plot=False
-                 )
-    
+    fixed_provision(
+        profile=profile,
+        timetable=timetable,
+        env_params=env_params,
+        max_episode=max_episode,
+        plot_prefix_name="Fixed_Mod",
+        save_plot=True,
+        show_plot=False
+    )
+    greedy_provision(
+        profile=profile,
+        timetable=timetable,
+        env_params=env_params,
+        max_episode=max_episode,
+        plot_prefix_name="Greedy_Mod",
+        save_plot=True,
+        show_plot=False
+    )
+    pg_provision(
+        profile=profile,
+        timetable=timetable,
+        env_params=env_params,
+        max_episode=max_episode,
+        plot_prefix_name="PG_Reinforce_Mod",
+        save_plot=True,
+        show_plot=False,
+        agent="reinforce"
+    )
+    pg_provision(
+        profile=profile,
+        timetable=timetable,
+        env_params=env_params,
+        max_episode=max_episode,
+        plot_prefix_name="PG_PPO2_Mod",
+        save_plot=True,
+        show_plot=False,
+        agent="ppo2"
+    )
 
 
 if __name__ == "__main__":

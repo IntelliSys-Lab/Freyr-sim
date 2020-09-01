@@ -4,11 +4,16 @@ import scipy.stats as stats
 import random 
 
 
-print("poisson: ")
-print(stats.poisson.rvs(mu=0.5, size=100))
+# l = [[None]] * 3
+l = []
+for _ in range(3):
+    l.append([])
 
-print("norm: ")
-print(random.randint(0, 1))
+print("before: {}".format(l))
 
-print("bernoulli: ")
-print(stats.bernoulli.rvs(p=0.5, size=100))
+for i in range(len(l)):
+    l[i].append("fuck")
+
+    print("during: {}".format(l))
+
+print("after: {}".format(l))

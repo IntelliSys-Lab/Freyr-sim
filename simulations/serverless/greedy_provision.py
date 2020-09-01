@@ -33,14 +33,15 @@ def encode_action(function_profile, resource_adjust_list):
 #
 # Naive greedy provision strategy
 #                 
-def greedy_provision(profile,
-                     timetable,
-                     env_params,
-                     max_episode=500,
-                     plot_prefix_name="Greedy",
-                     save_plot=False,
-                     show_plot=True,
-                     ):
+def greedy_provision(
+    profile,
+    timetable,
+    env_params,
+    max_episode=500,
+    plot_prefix_name="Greedy",
+    save_plot=False,
+    show_plot=True,
+):
     # Set up logger
     logger_wrapper = Logger("greedy_provision")
     logger = logger_wrapper.get_logger()
