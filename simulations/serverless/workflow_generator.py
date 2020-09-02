@@ -167,8 +167,8 @@ class WorkflowGenerator():
                 if row["HashApp"] == function_params_dict[function_hash]["HashApp"]:
                     function_params_dict[function_hash]["ideal_memory"] = int(45*row["AverageAllocatedMb_pct100"]/1536)
                     function_params_dict[function_hash]["ideal_cpu"] = int(32*row["AverageAllocatedMb_pct100"]/1536)
-                    function_params_dict[function_hash]["memory_least_hint"] = int(32*row["AverageAllocatedMb"]/1536)
-                    function_params_dict[function_hash]["cpu_least_hint"] = int(32*row["AverageAllocatedMb"]/1536)
+                    function_params_dict[function_hash]["memory_least_hint"] = int(32*row["AverageAllocatedMb_pct1"]/1536)
+                    function_params_dict[function_hash]["cpu_least_hint"] = int(32*row["AverageAllocatedMb_pct1"]/1536)
                     function_params_dict[function_hash]["memory_cap_per_function"] = 32
                     function_params_dict[function_hash]["cpu_cap_per_function"] = 45
                     break
@@ -184,7 +184,7 @@ class WorkflowGenerator():
                     if row["Trigger"] == "http":
                         function_params_dict[function_hash]["timeout"] = 230 
                     else:
-                        function_params_dict[function_hash]["timeout"] = 600
+                        function_params_dict[function_hash]["timeout"] = 300
         
         # Create Profile paramters
         function_params = []
@@ -269,7 +269,7 @@ class WorkflowGenerator():
         max_timestep = timetable_params.max_timestep
         mod_factors = timetable_params.mod_factors
         
-        funtion_list = profile.function_profile
+        function_list = profile.function_profile
         timetable_list = []
         
         for i in range(max_timestep):
@@ -277,7 +277,7 @@ class WorkflowGenerator():
             
             for factor_i in range(len(mod_factors)):
                 if i%mod_factors[factor_i] == 0:
-                    timestep.append(funtion_list[factor_i].function_id)
+                    timestep.append(function_list[factor_i].function_id)
                 
             timetable_list.append(timestep)
             
@@ -292,11 +292,11 @@ class WorkflowGenerator():
         max_timestep = timetable_params.max_timestep
         mu = timetable_params.poisson_mu
         
-        funtion_list = profile.function_profile
+        function_list = profile.function_profile
         timetable_list = []
         poisson_time_list = []
         
-        for function in funtion_list:
+        for function in function_list:
             poisson_time_list.append(
                 stats.poisson.rvs(
                     mu=mu, 
@@ -309,7 +309,7 @@ class WorkflowGenerator():
             
             for poisson_i in range(len(poisson_time_list)):
                 for t in range(poisson_time_list[poisson_i][i]):
-                    timestep.append(funtion_list[poisson_i].function_id)
+                    timestep.append(function_list[poisson_i].function_id)
                 
             timetable_list.append(timestep)
             
@@ -324,11 +324,11 @@ class WorkflowGenerator():
         max_timestep = timetable_params.max_timestep
         p = timetable_params.bernoulli_p
         
-        funtion_list = profile.function_profile
+        function_list = profile.function_profile
         timetable_list = []
         bernoulli_time_list = []
         
-        for function in funtion_list:
+        for function in function_list:
             bernoulli_time_list.append(
                 stats.bernoulli.rvs(
                     p=p, 
@@ -341,7 +341,7 @@ class WorkflowGenerator():
             
             for bernoulli_i in range(len(bernoulli_time_list)):
                 for t in range(bernoulli_time_list[bernoulli_i][i]):
-                    timestep.append(funtion_list[bernoulli_i].function_id)
+                    timestep.append(function_list[bernoulli_i].function_id)
                 
             timetable_list.append(timestep)
             
@@ -356,7 +356,7 @@ class WorkflowGenerator():
         max_timestep = timetable_params.max_timestep
         invocation_traces = timetable_params.azure_invocation_traces
 
-        funtion_list = profile.function_profile
+        function_list = profile.function_profile
         timetable_list = []
 
         for i in range(max_timestep):

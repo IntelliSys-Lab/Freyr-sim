@@ -116,28 +116,68 @@ def save_sampled_traces(
 
     # First visit, which is time-efficient
     for app_hash in app_hash_list:
-        # Save sampled memory traces
-        for trace in memory_traces:
-            if app_hash == trace["HashApp"]:
-                sampled_memory_traces.append(trace)
-                break
-
         # Save sampled duration traces
-        function_hash_list = []
+        function_hash_duration_list = []
         for trace in duration_traces:
             if app_hash == trace["HashApp"] and \
-                trace["HashFunction"] not in function_hash_list:
-                function_hash_list.append(trace["HashFunction"])
+                trace["HashFunction"] not in function_hash_duration_list:
+                function_hash_duration_list.append(trace["HashFunction"])
                 sampled_duration_traces.append(trace)
-
+        
         # Save sampled invocation traces
-        function_hash_list = []
+        function_hash_invocation_list = []
         for trace in invocation_traces:
             if app_hash == trace["HashApp"] and \
-                trace["HashFunction"] not in function_hash_list:
-                function_hash_list.append(trace["HashFunction"])
+                trace["HashFunction"] not in function_hash_invocation_list:
+                function_hash_invocation_list.append(trace["HashFunction"])
                 sampled_invocation_traces.append(trace)
 
+        # Save sampled memory traces
+        if len(function_hash_duration_list) == 0 or \
+            len(function_hash_invocation_list) == 0: # Empty application
+            break
+        else:
+            for trace in memory_traces:
+                if app_hash == trace["HashApp"]:
+                    sampled_memory_traces.append(trace)
+                    break
+    
+    # Regularize duration and invocation traces
+    while len(sampled_duration_traces) != len(sampled_invocation_traces):
+        if len(sampled_duration_traces) < len(sampled_invocation_traces):
+            regularized_sampled_invocation_traces = []
+
+            for invocation_trace in sampled_invocation_traces:
+                for duration_trace in sampled_duration_traces:
+                    if invocation_trace["HashFunction"] == duration_trace["HashFunction"]:
+                        regularized_sampled_invocation_traces.append(invocation_trace)
+                        break
+
+            sampled_invocation_traces = regularized_sampled_invocation_traces
+
+        elif len(sampled_duration_traces) > len(sampled_invocation_traces):
+            regularized_sampled_duration_traces = []
+
+            for duration_trace in sampled_duration_traces:
+                for invocation_trace in sampled_invocation_traces:
+                    if duration_trace["HashFunction"] == invocation_trace["HashFunction"]:
+                        regularized_sampled_duration_traces.append(duration_trace)
+                        break
+        
+            sampled_duration_traces = regularized_sampled_duration_traces
+
+    # Regularize memory traces 
+    regularized_sampled_memory_traces = []
+
+    for memory_trace in sampled_memory_traces:
+        for duration_trace in sampled_duration_traces:
+            if memory_trace["HashApp"] == duration_trace["HashApp"]:
+                regularized_sampled_memory_traces.append(memory_trace)
+                break
+        
+    sampled_memory_traces = regularized_sampled_memory_traces
+
+    # Export as CSV files
     pd.DataFrame(sampled_memory_traces).to_csv(
         save_file_path + "sampled_memory_traces.csv",
         index=False
@@ -155,14 +195,19 @@ def save_sampled_traces(
 
 if __name__ == "__main__":
     azure_file_path = "azurefunctions-dataset2019/"
-    n_apps = 4
+    n_apps = 5
 
+    print("Loading Azure Functions traces...")
     memory_traces, duration_traces, invocation_traces = load_from_azure(azure_file_path)
+    
+    print("Characterizing memory distribution...")
     dist = characterize_memory_distribution(
         memory_traces,
         max_memory=1536,
         interval=256
     )
+
+    print("Sampling from distribution...")
     app_hash_list = sample_from_distribution(dist, n_apps)
 
     print("Start saving...")

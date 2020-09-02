@@ -46,8 +46,8 @@ def launch():
     
     # Set paramters for FaaSEnv
     env_params = EnvParameters(
-        cpu_total=32*100,
-        memory_total=45*100,
+        cpu_total=32*10000,
+        memory_total=45*10000,
         cpu_cap_per_function=32,
         memory_cap_per_function=45
     )
@@ -60,7 +60,7 @@ def launch():
         profile=profile,
         timetable=timetable,
         env_params=env_params,
-        max_episode=max_episode,
+        max_episode=5,
         plot_prefix_name="Fixed_Mod",
         save_plot=True,
         show_plot=False
@@ -69,7 +69,7 @@ def launch():
         profile=profile,
         timetable=timetable,
         env_params=env_params,
-        max_episode=max_episode,
+        max_episode=5,
         plot_prefix_name="Greedy_Mod",
         save_plot=True,
         show_plot=False

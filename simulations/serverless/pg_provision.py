@@ -36,7 +36,7 @@ def pg_provision(
             observation_dim=env.observation_space.shape[0],
             action_dim=env.action_space.n,
             hidden_dims=[50, 20],
-            learning_rate=0.003,
+            learning_rate=0.005,
             discount_factor=1
         )
     elif agent == "ppo2":
@@ -44,7 +44,7 @@ def pg_provision(
             observation_dim=env.observation_space.shape[0],
             action_dim=env.action_space.n,
             hidden_dims=[50, 20],
-            learning_rate=0.003,
+            learning_rate=0.005,
             discount_factor=1,
             ppo_clip=0.2,
             ppo_steps=5
