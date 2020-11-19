@@ -61,8 +61,8 @@ def characterize_memory_distribution(
 
     for trace in memory_traces:
         dist_index = int(trace["AverageAllocatedMb"] / interval)
-        if dist_index > n_levels:
-            dist_index = n_levels
+        if dist_index >= n_levels:
+            dist_index = n_levels - 1 
 
         dist[dist_index].append(trace)
 
@@ -195,7 +195,7 @@ def save_sampled_traces(
 
 if __name__ == "__main__":
     azure_file_path = "azurefunctions-dataset2019/"
-    n_apps = 5
+    n_apps = 10
 
     print("Loading Azure Functions traces...")
     memory_traces, duration_traces, invocation_traces = load_from_azure(azure_file_path)
@@ -203,8 +203,8 @@ if __name__ == "__main__":
     print("Characterizing memory distribution...")
     dist = characterize_memory_distribution(
         memory_traces,
-        max_memory=1536,
-        interval=256
+        max_memory=1024,
+        interval=128
     )
 
     print("Sampling from distribution...")

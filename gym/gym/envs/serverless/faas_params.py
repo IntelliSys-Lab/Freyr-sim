@@ -7,15 +7,23 @@ class EnvParameters():
     """
     def __init__(
         self,
-        cpu_total=32*10,
-        memory_total=45*10,
-        cpu_cap_per_function=32,
-        memory_cap_per_function=46
+        cluster_size=10,
+        user_cpu_per_server=8,
+        user_memory_per_server=8,
+        keep_alive_window_per_server=60,
+        cpu_cap_per_function=8,
+        memory_cap_per_function=8,
+        interval=1,
+        timeout_penalty=60
     ):
-        self.cpu_total = cpu_total
-        self.memory_total = memory_total
+        self.cluster_size = cluster_size
+        self.user_cpu_per_server = user_cpu_per_server
+        self.user_memory_per_server = user_memory_per_server
+        self.keep_alive_window_per_server = keep_alive_window_per_server
         self.cpu_cap_per_function = cpu_cap_per_function
         self.memory_cap_per_function = memory_cap_per_function
+        self.interval = interval
+        self.timeout_penalty = timeout_penalty
 
         
 class FunctionParameters():
@@ -24,16 +32,20 @@ class FunctionParameters():
     """
     def __init__(
         self,
-        ideal_cpu=32,
-        ideal_memory=45,
+        ideal_cpu=8,
+        ideal_memory=8,
         ideal_duration=30,
-        cpu_cap_per_function=32,
-        memory_cap_per_function=45,
+        cpu_cap_per_function=8,
+        memory_cap_per_function=8,
         cpu_least_hint=1,
         memory_least_hint=1,
+        cpu_user_defined=4,
+        memory_user_defined=4,
         timeout=60,
         application_id=None,
-        function_id=None
+        function_id=None,
+        hash_value=0,
+        cold_start_time=1,
     ):
         self.ideal_cpu = ideal_cpu
         self.ideal_memory = ideal_memory
@@ -42,9 +54,13 @@ class FunctionParameters():
         self.memory_cap_per_function = memory_cap_per_function
         self.cpu_least_hint = cpu_least_hint
         self.memory_least_hint = memory_least_hint
+        self.cpu_user_defined = cpu_user_defined
+        self.memory_user_defined = memory_user_defined
         self.timeout = timeout
         self.application_id = application_id
         self.function_id = function_id
+        self.hash_value = hash_value
+        self.cold_start_time = cold_start_time
 
 class TimetableParameters():
     """

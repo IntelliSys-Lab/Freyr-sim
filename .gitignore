@@ -143,6 +143,9 @@ dmypy.json
 .pydevproject
 .vscode
 
+# nohup output files
+nohup.out
+
 # Setuptools distribution and build folders.
 /dist/
 /build
@@ -155,9 +158,6 @@ dmypy.json
 
 *.sublime-project
 *.sublime-workspace
-
-logs/
-figures/
 
 .ipynb_checkpoints
 ghostdriver.log
@@ -178,7 +178,10 @@ tutorial/*.html
 vizdoom.ini
 /vendor/
 
-#
+# Simulation scratches
+simulations/serverless/logs/*
+simulations/serverless/figures/*
+simulations/serverless/ckpt/*
+
 # Azure Functions Tracecs
-#
-azurefunctions-dataset2019/
+simulations/serverless/azurefunctions-dataset2019/*

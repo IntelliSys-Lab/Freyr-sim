@@ -4,23 +4,26 @@ import numpy as np
 import gym
 from gym.envs.serverless.faas_params import EnvParameters, TimetableParameters
 from workflow_generator import WorkflowGenerator
-
-from fixed_provision import fixed_provision
-from greedy_provision import greedy_provision
-from pg_provision import pg_provision
+from logger import Logger
+from fixed_rm import fixed_rm
+from greedy_rm import greedy_rm
+from lambda_rm import lambda_rm_train, lambda_rm_eval
 
 
 
 def launch():
 
+    # Set up logger wrapper
+    logger_wrapper = Logger()
+
     # Generate workflow
     workflow_generator = WorkflowGenerator()
     
-    # timetable_params = TimetableParameters(
-    #     max_timestep=200,
-    #     distribution_type="mod",
-    #     mod_factors=[2, 2, 2, 2, 2, 5, 30, 30, 30, 30]
-    # )
+    timetable_params = TimetableParameters(
+        max_timestep=120,
+        distribution_type="mod",
+        mod_factors=[1, 1, 1, 1, 2, 2, 4, 4, 4, 8]
+    )
     # timetable_params = TimetableParameters(
     #     max_timestep=200,
     #     distribution_type="bernoulli",
@@ -31,68 +34,67 @@ def launch():
     #     distribution_type="poisson",
     #     poisson_mu=0.8
     # )
-
-    # profile, timetable = workflow_generator.generate_workflow(
-    #     default="ensure",
-    #     timetable_params=timetable_params
-    # )
-
-    timetable_params = None # Azure traces
+    # timetable_params = None # Azure traces
     
     profile, timetable = workflow_generator.generate_workflow(
-        default="azure",
+        # default="azure",
+        default="ensure",
         timetable_params=timetable_params
     )
     
     # Set paramters for FaaSEnv
     env_params = EnvParameters(
-        cpu_total=32*10000,
-        memory_total=45*10000,
-        cpu_cap_per_function=32,
-        memory_cap_per_function=45
+        cluster_size=10,
+        user_cpu_per_server=8,
+        user_memory_per_server=8,
+        keep_alive_window_per_server=60,
+        cpu_cap_per_function=8,
+        memory_cap_per_function=8,
+        timeout_penalty=60,
+        interval=1,
     )
-    
-    # Number of max episode
-    max_episode = 300
     
     # Start simulations
-    fixed_provision(
+    fixed_rm(
         profile=profile,
         timetable=timetable,
         env_params=env_params,
-        max_episode=5,
-        plot_prefix_name="Fixed_Mod",
-        save_plot=True,
-        show_plot=False
-    )
-    greedy_provision(
-        profile=profile,
-        timetable=timetable,
-        env_params=env_params,
-        max_episode=5,
-        plot_prefix_name="Greedy_Mod",
-        save_plot=True,
-        show_plot=False
-    )
-    pg_provision(
-        profile=profile,
-        timetable=timetable,
-        env_params=env_params,
-        max_episode=max_episode,
-        plot_prefix_name="PG_Reinforce_Mod",
+        max_episode=10,
         save_plot=True,
         show_plot=False,
-        agent="reinforce"
+        logger_wrapper=logger_wrapper
     )
-    pg_provision(
+
+    # greedy_provision(
+    #     profile=profile,
+    #     timetable=timetable,
+    #     env_params=env_params,
+    #     max_episode=10,
+    #     save_plot=True,
+    #     show_plot=False,
+    #     logger_wrapper=logger_wrapper
+    # )
+
+    # lambda_rm_train(
+    #     profile=profile,
+    #     timetable=timetable,
+    #     env_params=env_params,
+    #     max_episode=200,
+    #     model_save_path="ckpt/best_model.pth",
+    #     save_plot=True,
+    #     show_plot=False,
+    #     logger_wrapper=logger_wrapper
+    # )
+
+    lambda_rm_eval(
         profile=profile,
         timetable=timetable,
         env_params=env_params,
-        max_episode=max_episode,
-        plot_prefix_name="PG_PPO2_Mod",
+        max_episode=10,
+        checkpoint_path="ckpt/best_model.pth",
         save_plot=True,
         show_plot=False,
-        agent="ppo2"
+        logger_wrapper=logger_wrapper
     )
 
 

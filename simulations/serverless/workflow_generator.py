@@ -12,106 +12,128 @@ class WorkflowGenerator():
     Generate workflows running on FaaSEnv
     """
     def ensure_params(self):
+        hash_value = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
         # Generate profile parameters
         ET_Image_Resizing_params = FunctionParameters(
             ideal_cpu=4, 
             ideal_memory=3, 
             ideal_duration=1, 
-            cpu_least_hint=3, 
+            cpu_least_hint=1, 
             memory_least_hint=1,
-            timeout=5,
-            cpu_cap_per_function=32,
-            memory_cap_per_function=45,
+            timeout=60,
+            cpu_cap_per_function=8,
+            memory_cap_per_function=8,
+            hash_value=hash_value[0],
+            cold_start_time=0.5,
         )
         ET_Streaming_Analytics_params = FunctionParameters(
-            ideal_cpu=5, 
-            ideal_memory=2, 
-            ideal_duration=1, 
-            cpu_least_hint=4, 
-            memory_least_hint=1,
-            timeout=5,
-            cpu_cap_per_function=32,
-            memory_cap_per_function=45,
-        )
-        ET_Email_Gen_params = FunctionParameters(
-            ideal_cpu=10, 
+            ideal_cpu=4, 
             ideal_memory=4, 
             ideal_duration=1, 
-            cpu_least_hint=7, 
+            cpu_least_hint=1, 
+            memory_least_hint=1,
+            timeout=60,
+            cpu_cap_per_function=8,
+            memory_cap_per_function=8,
+            hash_value=hash_value[1],
+            cold_start_time=1,
+        )
+        ET_Email_Gen_params = FunctionParameters(
+            ideal_cpu=4, 
+            ideal_memory=4, 
+            ideal_duration=2, 
+            cpu_least_hint=1, 
             memory_least_hint=2,
-            timeout=5,
-            cpu_cap_per_function=32,
-            memory_cap_per_function=45,
+            timeout=60,
+            cpu_cap_per_function=8,
+            memory_cap_per_function=8,
+            hash_value=hash_value[2],
+            cold_start_time=1,
         )
         ET_Stock_Analysis_params = FunctionParameters(
-            ideal_cpu=9, 
+            ideal_cpu=4, 
             ideal_memory=3, 
-            ideal_duration=1, 
-            cpu_least_hint=5, 
+            ideal_duration=3, 
+            cpu_least_hint=1, 
             memory_least_hint=2,
-            timeout=5,
-            cpu_cap_per_function=32,
-            memory_cap_per_function=45,
+            timeout=60,
+            cpu_cap_per_function=8,
+            memory_cap_per_function=8,
+            hash_value=hash_value[3],
+            cold_start_time=1,
         )
         ET_File_Encrypt_params = FunctionParameters(
-            ideal_cpu=11, 
-            ideal_memory=5, 
-            ideal_duration=1, 
-            cpu_least_hint=6, 
-            memory_least_hint=2,
-            timeout=5,
-            cpu_cap_per_function=32,
-            memory_cap_per_function=45,
+            ideal_cpu=4, 
+            ideal_memory=4, 
+            ideal_duration=4, 
+            cpu_least_hint=1, 
+            memory_least_hint=1,
+            timeout=60,
+            cpu_cap_per_function=8,
+            memory_cap_per_function=8,
+            hash_value=hash_value[4],
+            cold_start_time=1.5,
         )
         ET_Sentiment_Review_params = FunctionParameters(
-            ideal_cpu=12, 
-            ideal_memory=8, 
-            ideal_duration=2, 
-            cpu_least_hint=6, 
-            memory_least_hint=4,
-            timeout=5,
-            cpu_cap_per_function=32,
-            memory_cap_per_function=46,
+            ideal_cpu=4, 
+            ideal_memory=3, 
+            ideal_duration=5, 
+            cpu_least_hint=1, 
+            memory_least_hint=1,
+            timeout=60,
+            cpu_cap_per_function=8,
+            memory_cap_per_function=8,
+            hash_value=hash_value[5],
+            cold_start_time=2,
         )
         MP_Nearest_Neighbor_params = FunctionParameters(
-            ideal_cpu=32, 
-            ideal_memory=12, 
-            ideal_duration=9, 
-            cpu_least_hint=22, 
-            memory_least_hint=8,
-            timeout=30,
-            cpu_cap_per_function=32,
-            memory_cap_per_function=45,
+            ideal_cpu=6, 
+            ideal_memory=6, 
+            ideal_duration=10, 
+            cpu_least_hint=1, 
+            memory_least_hint=1,
+            timeout=600,
+            cpu_cap_per_function=8,
+            memory_cap_per_function=8,
+            hash_value=hash_value[6],
+            cold_start_time=3,
         ) 
         MP_Comp_Fluid_Dynamics_params = FunctionParameters(
-            ideal_cpu=32, 
-            ideal_memory=16, 
+            ideal_cpu=8, 
+            ideal_memory=4, 
             ideal_duration=21, 
-            cpu_least_hint=29, 
-            memory_least_hint=8,
-            timeout=60,
-            cpu_cap_per_function=32,
-            memory_cap_per_function=45,
+            cpu_least_hint=1, 
+            memory_least_hint=1,
+            timeout=600,
+            cpu_cap_per_function=8,
+            memory_cap_per_function=8,
+            hash_value=hash_value[7],
+            cold_start_time=5,
         )
         MP_Sorting_params = FunctionParameters(
-            ideal_cpu=32, 
-            ideal_memory=28, 
+            ideal_cpu=8, 
+            ideal_memory=4, 
             ideal_duration=45, 
-            cpu_least_hint=29, 
-            memory_least_hint=16,
-            timeout=60,
-            cpu_cap_per_function=32,
-            memory_cap_per_function=45,
+            cpu_least_hint=1, 
+            memory_least_hint=1,
+            timeout=600,
+            cpu_cap_per_function=8,
+            memory_cap_per_function=8,
+            hash_value=hash_value[8],
+            cold_start_time=8,
         ) 
         MP_Matrix_Multiply_params = FunctionParameters(
-            ideal_cpu=32, 
+            ideal_cpu=8, 
             ideal_memory=6, 
             ideal_duration=20, 
-            cpu_least_hint=28, 
-            memory_least_hint=2,
-            timeout=60,
-            cpu_cap_per_function=32,
-            memory_cap_per_function=45,
+            cpu_least_hint=1, 
+            memory_least_hint=1,
+            timeout=600,
+            cpu_cap_per_function=8,
+            memory_cap_per_function=8,
+            hash_value=hash_value[9],
+            cold_start_time=4,
         )
         
         function_params = [
@@ -165,12 +187,14 @@ class WorkflowGenerator():
         for function_hash in function_params_dict.keys():
             for _, row in memory_traces.iterrows():
                 if row["HashApp"] == function_params_dict[function_hash]["HashApp"]:
-                    function_params_dict[function_hash]["ideal_memory"] = int(45*row["AverageAllocatedMb_pct100"]/1536)
-                    function_params_dict[function_hash]["ideal_cpu"] = int(32*row["AverageAllocatedMb_pct100"]/1536)
-                    function_params_dict[function_hash]["memory_least_hint"] = int(32*row["AverageAllocatedMb_pct1"]/1536)
-                    function_params_dict[function_hash]["cpu_least_hint"] = int(32*row["AverageAllocatedMb_pct1"]/1536)
-                    function_params_dict[function_hash]["memory_cap_per_function"] = 32
-                    function_params_dict[function_hash]["cpu_cap_per_function"] = 45
+                    function_params_dict[function_hash]["ideal_memory"] = min(8, max(1, int(1*row["AverageAllocatedMb_pct100"]/256)))
+                    function_params_dict[function_hash]["ideal_cpu"] = min(8, int(1*row["AverageAllocatedMb_pct100"]/256))
+                    function_params_dict[function_hash]["memory_least_hint"] = 1
+                    function_params_dict[function_hash]["cpu_least_hint"] = 1
+                    function_params_dict[function_hash]["memory_user_defined"] = 4
+                    function_params_dict[function_hash]["cpu_user_defined"] = 4
+                    function_params_dict[function_hash]["memory_cap_per_function"] = 8
+                    function_params_dict[function_hash]["cpu_cap_per_function"] = 8
                     break
 
             for _, row in duration_traces.iterrows():
@@ -184,12 +208,14 @@ class WorkflowGenerator():
                     if row["Trigger"] == "http":
                         function_params_dict[function_hash]["timeout"] = 230 
                     else:
-                        function_params_dict[function_hash]["timeout"] = 300
+                        function_params_dict[function_hash]["timeout"] = 600 # Max timeout limit
+                        # function_params_dict[function_hash]["timeout"] = 300 # Default timeout limit
         
         # Create Profile paramters
         function_params = []
         application_params = []
 
+        hash_value = 0
         for function_hash in function_params_dict.keys():
             function = FunctionParameters(
                 ideal_cpu=function_params_dict[function_hash]["ideal_cpu"], 
@@ -200,11 +226,16 @@ class WorkflowGenerator():
                 timeout=function_params_dict[function_hash]["timeout"],
                 cpu_cap_per_function=function_params_dict[function_hash]["cpu_cap_per_function"],
                 memory_cap_per_function=function_params_dict[function_hash]["memory_cap_per_function"],
+                cpu_user_defined=function_params_dict[function_hash]["cpu_user_defined"],
+                memory_user_defined=function_params_dict[function_hash]["memory_user_defined"],
                 application_id=function_params_dict[function_hash]["HashApp"],
-                function_id=function_hash
+                function_id=function_hash,
+                hash_value=hash_value,
+                cold_start_time=1,
             )
-            
+
             function_params.append(function)
+            hash_value = hash_value + 1
 
         app_hash_list = memory_traces["HashApp"]
         for _ in app_hash_list:
@@ -240,9 +271,14 @@ class WorkflowGenerator():
             # ) # Initially over-provision
 
             function.set_function(
-                cpu=param.cpu_least_hint, 
-                memory=param.memory_least_hint
-            ) # Initially set as hinted
+                cpu=param.cpu_user_defined, 
+                memory=param.memory_user_defined
+            ) # Initially user defined
+
+            # function.set_function(
+            #     cpu=param.cpu_least_hint, 
+            #     memory=param.memory_least_hint
+            # ) # Initially set as hinted
             
             function_list.append(function)
         

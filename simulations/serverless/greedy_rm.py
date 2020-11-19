@@ -33,18 +33,18 @@ def encode_action(function_profile, resource_adjust_list):
 #
 # Naive greedy provision strategy
 #                 
-def greedy_provision(
+def greedy_rm(
     profile,
     timetable,
     env_params,
+    logger_wrapper,
     max_episode=500,
     plot_prefix_name="Greedy",
     save_plot=False,
-    show_plot=True,
+    show_plot=True
 ):
     # Set up logger
-    logger_wrapper = Logger("greedy_provision")
-    logger = logger_wrapper.get_logger()
+    logger = logger_wrapper.get_logger("greedy_provision")
     
     # Make environment
     env = gym.make("FaaS-v0", params=env_params, profile=profile, timetable=timetable)
@@ -52,6 +52,7 @@ def greedy_provision(
     
     reward_trend = []
     avg_slow_down_trend = []
+    avg_completion_time_trend = []
     timeout_num_trend = []
     
     # Start random provision
@@ -72,45 +73,50 @@ def greedy_provision(
                 record = info["request_record"].request_per_function_record
                 
                 #
-                # Greedy resource adjustment
+                # Greedy resource adjustment: completion time decay
                 #
                 
-                # Record latest slow down for each function at each system timestep
-                latest_slow_down_record = {}
+                # Record last two completion time for each function and its decay at each system timestep
+                completion_time_decay_record = {}
                 for function in profile.function_profile:
-                    latest_slow_down_record[function.function_id] = 1.0
+                    completion_time_decay_record[function.function_id] = 1.0
                     
                 # Adjustment for each function
                 resource_adjust_list = {}
                 for function in profile.function_profile:
                     resource_adjust_list[function.function_id] = []
                 
-                # Update latest slow down for each function
+                # Update completion time decay for each function
                 for id in record.keys():
-                    if len(record[id]) == 0: # No request finished for this function
+                    if len(record[id]) <= 1: # No request finished or no old request for this function
                         resource_adjust_list[id] = [-1, -1] # Hold 
                     else:
-                        latest_request = record[id][-1]
-                        
-                        if latest_request.status == "timeout": 
-                            latest_slow_down_record[id] = 2.0 # Timeout penalty
+                        old_request = record[id][-2]
+                        new_request = record[id][-1]
+
+                        if new_request.status == "timeout" or old_request.status == "timeout": 
+                            completion_time_decay_record[id] = 114514.0 # Timeout penalty
                         else: 
-                            latest_slow_down_record[id] = latest_request.get_slow_down()
-                
+                            # Update decay
+                            completion_time_decay_record[id] = new_request.get_completion_time() / old_request.get_completion_time()
+
                 # Assign resource adjusts. 
-                # Functions that have latest slow down over avg get increase
-                # Otherwise decrease
-                avg_slow_down = np.mean(list(latest_slow_down_record.values()))
-                for id in latest_slow_down_record.keys():
-                    if latest_slow_down_record[id] >= avg_slow_down:
+                # Functions that have decay (latest completion time) / (previous completion time)
+                # over avg get increase, otherwise decrease
+                decay_list = []
+                for id in completion_time_decay_record.keys():
+                    decay_list.append(completion_time_decay_record[id])
+
+                decay_avg = np.mean(decay_list)
+
+                for id in completion_time_decay_record.keys():
+                    if completion_time_decay_record[id] >= decay_avg:
                         resource_adjust_list[id] = [1, 3] # Increase one slot for CPU and memory
                     else:
                         resource_adjust_list[id] = [0, 2] # Decrease one slot for CPU and memory
                 
                 action = encode_action(profile.function_profile, resource_adjust_list)
-            else:
-                action = env.action_space.n - 1
-                
+
             logger.debug("")
             logger.debug("Actual timestep {}".format(actual_time))
             logger.debug("System timestep {}".format(system_time))
@@ -122,6 +128,7 @@ def greedy_provision(
             
             if done:
                 avg_slow_down = info["avg_slow_down"]
+                avg_completion_time = info["avg_completion_time"]
                 timeout_num = info["timeout_num"]
                 
                 logger.info("")
@@ -133,11 +140,13 @@ def greedy_provision(
                 logger.info("{} actual timesteps".format(actual_time))
                 logger.info("{} system timesteps".format(system_time))
                 logger.info("Total reward: {}".format(reward_sum))
-                logger.info("Avg slow down: {}".format(avg_slow_down))
+                logger.info("Avg slowdown: {}".format(avg_slow_down))
+                logger.info("Avg completion time: {}".format(avg_completion_time))
                 logger.info("Timeout num: {}".format(timeout_num))
                 
                 reward_trend.append(reward_sum)
                 avg_slow_down_trend.append(avg_slow_down)
+                avg_completion_time_trend.append(avg_completion_time)
                 timeout_num_trend.append(timeout_num)
                 
                 break
@@ -146,9 +155,20 @@ def greedy_provision(
     plotter = Plotter()
     
     if save_plot is True:
-        plotter.plot_save(plot_prefix_name, reward_trend, avg_slow_down_trend, timeout_num_trend)
+        plotter.plot_save(
+            prefix_name=plot_prefix_name, 
+            reward_trend=reward_trend, 
+            avg_slow_down_trend=avg_slow_down_trend, 
+            avg_completion_time_trend=avg_completion_time_trend,
+            timeout_num_trend=timeout_num_trend
+        )
     if show_plot is True:
-        plotter.plot_show(reward_trend, avg_slow_down_trend, timeout_num_trend)
-
+        plotter.plot_show(
+            reward_trend=reward_trend, 
+            avg_slow_down_trend=avg_slow_down_trend, 
+            avg_completion_time_trend=avg_completion_time_trend,
+            timeout_num_trend=timeout_num_trend,
+        )
+        
     logger_wrapper.shutdown_logger()
     
