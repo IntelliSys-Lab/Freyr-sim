@@ -22,7 +22,7 @@ def launch():
     timetable_params = TimetableParameters(
         max_timestep=120,
         distribution_type="mod",
-        mod_factors=[1, 1, 1, 1, 2, 2, 4, 4, 4, 8]
+        mod_factors=[1, 1, 1, 1, 2, 2, 4, 4, 8, 10]
     )
     # timetable_params = TimetableParameters(
     #     max_timestep=200,
@@ -75,16 +75,16 @@ def launch():
     #     logger_wrapper=logger_wrapper
     # )
 
-    # lambda_rm_train(
-    #     profile=profile,
-    #     timetable=timetable,
-    #     env_params=env_params,
-    #     max_episode=200,
-    #     model_save_path="ckpt/best_model.pth",
-    #     save_plot=True,
-    #     show_plot=False,
-    #     logger_wrapper=logger_wrapper
-    # )
+    lambda_rm_train(
+        profile=profile,
+        timetable=timetable,
+        env_params=env_params,
+        max_episode=500,
+        model_save_path="ckpt/best_model.pth",
+        save_plot=True,
+        show_plot=False,
+        logger_wrapper=logger_wrapper
+    )
 
     lambda_rm_eval(
         profile=profile,

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import gym
 from logger import Logger
 from plotter import Plotter
-
+from utils import log_trends, log_resource_utils, log_function_throughput
 
 
 #
@@ -15,17 +15,15 @@ from plotter import Plotter
 def encode_action(function_profile, resource_adjust_list):
     actions = []
     
-    for function in function_profile:
-        for key in resource_adjust_list.keys():
-            if function.function_id == key:
-                index = function_profile.index(function)
-                
-                if resource_adjust_list[key][0] != -1:
-                    adjust_cpu = index*4 + resource_adjust_list[key][0]
-                    actions.append(adjust_cpu)
-                if resource_adjust_list[key][1] != -1:
-                    adjust_memory = index*4 + resource_adjust_list[key][1]
-                    actions.append(adjust_memory)
+    for index, function in enumerate(function_profile):
+        function_id = function.get_function_id()
+
+        if resource_adjust_list[function_id][0] != -1:
+            adjust_cpu = index*4 + resource_adjust_list[function_id][0]
+            actions.append(adjust_cpu)
+        if resource_adjust_list[function_id][1] != -1:
+            adjust_memory = index*4 + resource_adjust_list[function_id][1]
+            actions.append(adjust_memory)
                     
     return actions
    
@@ -54,6 +52,10 @@ def greedy_rm(
     avg_slow_down_trend = []
     avg_completion_time_trend = []
     timeout_num_trend = []
+    avg_completion_time_per_function_trend = {}
+    for function in profile.get_function_profile():
+        function_id = function.get_function_id()
+        avg_completion_time_per_function_trend[function_id] = []
     
     # Start random provision
     for episode in range(max_episode):
@@ -63,10 +65,12 @@ def greedy_rm(
         system_time = 0
         
         action = env.action_space.n - 1
+
+        function_throughput_list = []
         
         while True:
             actual_time = actual_time + 1
-            observation, reward, done, info = env.step(action)
+            next_observation, reward, done, info = env.step(action)
             
             if system_time < info["system_time"]:
                 system_time = info["system_time"]
@@ -148,8 +152,36 @@ def greedy_rm(
                 avg_slow_down_trend.append(avg_slow_down)
                 avg_completion_time_trend.append(avg_completion_time)
                 timeout_num_trend.append(timeout_num)
+
+                # Log average completion time per function
+                request_record = info["request_record"]
+                for function_id in avg_completion_time_per_function_trend.keys():
+                    avg_completion_time_per_function_trend[function_id].append(
+                        request_record.get_avg_completion_time_per_function(function_id)
+                    )
+
+                # Log resource utilization 
+                resource_utils_record = info["resource_utils_record"]
+                log_resource_utils(
+                    logger_wrapper=logger_wrapper,
+                    rm_name=rm, 
+                    overwrite=False, 
+                    episode=episode, 
+                    resource_utils_record=resource_utils_record
+                )
+
+                # Log function throughput
+                log_function_throughput(
+                    logger_wrapper=logger_wrapper,
+                    rm_name=rm, 
+                    overwrite=False, 
+                    episode=episode, 
+                    function_throughput_list=function_throughput_list
+                )
                 
                 break
+            
+            observation = next_observation
     
     # Plot each episode 
     plotter = Plotter()
@@ -170,5 +202,14 @@ def greedy_rm(
             timeout_num_trend=timeout_num_trend,
         )
         
-    logger_wrapper.shutdown_logger()
-    
+    # Log trends
+    log_trends(
+        logger_wrapper=logger_wrapper,
+        rm_name=rm,
+        overwrite=False,
+        reward_trend=reward_trend,
+        avg_completion_time_trend=avg_completion_time_trend,
+        avg_completion_time_per_function_trend=avg_completion_time_per_function_trend,
+        timeout_num_trend=timeout_num_trend,
+        loss_trend=None,
+    )

@@ -5,6 +5,7 @@ import gym
 from logger import Logger
 from plotter import Plotter
 from pg_ppo2_agent import PPO2Agent
+from utils import log_trends, log_resource_utils, log_function_throughput
 
 
 
@@ -47,9 +48,13 @@ def lambda_rm_train(
     avg_completion_time_trend = []
     timeout_num_trend = []
     loss_trend = []
+    avg_completion_time_per_function_trend = {}
+    for function in profile.get_function_profile():
+        function_id = function.get_function_id()
+        avg_completion_time_per_function_trend[function_id] = []
 
-    # Pinpoint best avg completion time model
-    min_avg_completion_time = 10e8
+    # Record max sum rewards
+    max_reward_sum = -10e8
     
     # Start random provision
     for episode in range(max_episode):
@@ -59,6 +64,8 @@ def lambda_rm_train(
         actual_time = 0
         system_time = 0
         reward_sum = 0
+
+        function_throughput_list = []
         
         while True:
             actual_time = actual_time + 1
@@ -75,6 +82,7 @@ def lambda_rm_train(
             
             if system_time < info["system_time"]:
                 system_time = info["system_time"]
+                function_throughput_list.append(info["function_throughput"])
                 
             logger.debug("")
             logger.debug("Actual timestep {}".format(actual_time))
@@ -90,9 +98,9 @@ def lambda_rm_train(
                 avg_completion_time = info["avg_completion_time"]
                 timeout_num = info["timeout_num"]
 
-                # Save best model that has min avg completion time
-                if avg_completion_time < min_avg_completion_time:
-                    min_avg_completion_time = avg_completion_time
+                # Save the best model
+                if max_reward_sum < reward_sum:
+                    max_reward_sum = reward_sum
                     pg_agent.save(model_save_path)
                 
                 logger.info("")
@@ -112,6 +120,32 @@ def lambda_rm_train(
                 avg_completion_time_trend.append(avg_completion_time)
                 timeout_num_trend.append(timeout_num)
                 loss_trend.append(loss)
+
+                # # Log average completion time per function
+                # request_record = info["request_record"]
+                # for function_id in avg_completion_time_per_function_trend.keys():
+                #     avg_completion_time_per_function_trend[function_id].append(
+                #         request_record.get_avg_completion_time_per_function(function_id)
+                #     )
+
+                # # Log resource utilization 
+                # resource_utils_record = info["resource_utils_record"]
+                # log_resource_utils(
+                #     logger_wrapper=logger_wrapper,
+                #     rm_name=rm, 
+                #     overwrite=False, 
+                #     episode=episode, 
+                #     resource_utils_record=resource_utils_record
+                # )
+
+                # # Log function throughput
+                # log_function_throughput(
+                #     logger_wrapper=logger_wrapper,
+                #     rm_name=rm, 
+                #     overwrite=False, 
+                #     episode=episode, 
+                #     function_throughput_list=function_throughput_list
+                # )
                 
                 break
             
@@ -135,6 +169,18 @@ def lambda_rm_train(
             timeout_num_trend=timeout_num_trend, 
             loss_trend=loss_trend
         )
+
+    # Log trends
+    log_trends(
+        logger_wrapper=logger_wrapper,
+        rm_name=rm,
+        overwrite=False,
+        reward_trend=reward_trend,
+        avg_completion_time_trend=avg_completion_time_trend,
+        avg_completion_time_per_function_trend=avg_completion_time_per_function_trend,
+        timeout_num_trend=timeout_num_trend,
+        loss_trend=None,
+    )
 
     
 def lambda_rm_eval(
@@ -175,6 +221,10 @@ def lambda_rm_eval(
     avg_completion_time_trend = []
     timeout_num_trend = []
     loss_trend = []
+    avg_completion_time_per_function_trend = {}
+    for function in profile.get_function_profile():
+        function_id = function.get_function_id()
+        avg_completion_time_per_function_trend[function_id] = []
     
     # Start random provision
     for episode in range(max_episode):
@@ -184,22 +234,17 @@ def lambda_rm_eval(
         actual_time = 0
         system_time = 0
         reward_sum = 0
+
+        function_throughput_list = []
         
         while True:
             actual_time = actual_time + 1
             action, value_pred, log_prob = pg_agent.choose_action(observation)
             next_observation, reward, done, info = env.step(action)
 
-            pg_agent.record_trajectory(
-                observation=observation, 
-                action=action, 
-                reward=reward,
-                value=value_pred,
-                log_prob=log_prob
-            )
-            
             if system_time < info["system_time"]:
                 system_time = info["system_time"]
+                function_throughput_list.append(info["function_throughput"])
                 
             logger.debug("")
             logger.debug("Actual timestep {}".format(actual_time))
@@ -211,7 +256,6 @@ def lambda_rm_eval(
             reward_sum = reward_sum + reward
             
             if done:
-                loss = pg_agent.propagate()
                 avg_completion_time = info["avg_completion_time"]
                 timeout_num = info["timeout_num"]
                 
@@ -226,12 +270,36 @@ def lambda_rm_eval(
                 logger.info("Total reward: {}".format(reward_sum))
                 logger.info("Avg completion time: {}".format(avg_completion_time))
                 logger.info("Timeout num: {}".format(timeout_num))
-                logger.info("Loss: {}".format(loss))
                 
                 reward_trend.append(reward_sum)
                 avg_completion_time_trend.append(avg_completion_time)
                 timeout_num_trend.append(timeout_num)
-                loss_trend.append(loss)
+
+                # Log average completion time per function
+                request_record = info["request_record"]
+                for function_id in avg_completion_time_per_function_trend.keys():
+                    avg_completion_time_per_function_trend[function_id].append(
+                        request_record.get_avg_completion_time_per_function(function_id)
+                    )
+
+                # Log resource utilization 
+                resource_utils_record = info["resource_utils_record"]
+                log_resource_utils(
+                    logger_wrapper=logger_wrapper,
+                    rm_name=rm, 
+                    overwrite=False, 
+                    episode=episode, 
+                    resource_utils_record=resource_utils_record
+                )
+
+                # Log function throughput
+                log_function_throughput(
+                    logger_wrapper=logger_wrapper,
+                    rm_name=rm, 
+                    overwrite=False, 
+                    episode=episode, 
+                    function_throughput_list=function_throughput_list
+                )
                 
                 break
             
@@ -246,14 +314,22 @@ def lambda_rm_eval(
             reward_trend=reward_trend, 
             avg_completion_time_trend=avg_completion_time_trend,
             timeout_num_trend=timeout_num_trend, 
-            loss_trend=loss_trend
         )
     if show_plot is True:
         plotter.plot_show(
             reward_trend=reward_trend, 
             avg_completion_time_trend=avg_completion_time_trend, 
             timeout_num_trend=timeout_num_trend, 
-            loss_trend=loss_trend
         )
 
-    
+    # Log trends
+    log_trends(
+        logger_wrapper=logger_wrapper,
+        rm_name=rm,
+        overwrite=False,
+        reward_trend=reward_trend,
+        avg_completion_time_trend=avg_completion_time_trend,
+        avg_completion_time_per_function_trend=avg_completion_time_per_function_trend,
+        timeout_num_trend=timeout_num_trend,
+        loss_trend=None,
+    )
