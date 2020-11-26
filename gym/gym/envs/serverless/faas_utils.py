@@ -52,6 +52,8 @@ class Function():
         else:
             self.function_id = uuid.uuid1()
 
+        self.sequence = self.params.sequence
+
         self.hash_value = self.params.hash_value
         self.application_id = self.params.application_id
         self.resource_adjust_direction = [0, 0] # [cpu, memory]
@@ -68,6 +70,23 @@ class Function():
     
     def get_function_id(self):
         return self.function_id
+
+    def get_sequence(self):
+        return self.sequence
+
+    def get_sequence_size(self):
+        sequence_size = 0
+        if self.sequence is not None:
+            sequence_size = len(self.sequence)
+
+        return sequence_size
+
+    def get_total_sequence_size(self):
+        total_sequence_size = 1
+        if self.sequence is not None:
+            total_sequence_size = total_sequence_size + len(self.sequence)
+
+        return total_sequence_size
 
     def get_hash_value(self):
         return self.hash_value
@@ -185,11 +204,8 @@ class Request():
         return self.progress
 
     def get_completion_time(self):
-        return self.progress + self.waiting
+        return self.progress
     
-    def get_slow_down(self):
-        return self.get_completion_time() / self.profile.duration
-
     def get_status(self):
         return self.status
 
@@ -202,7 +218,7 @@ class Request():
             self.progress = self.progress + 1
             
             # Check status
-            if self.progress + self.waiting >= self.profile.params.timeout:
+            if self.progress >= self.profile.params.timeout:
                 self.status = "timeout" # Timeout
                 self.done_time = system_time
             
@@ -213,17 +229,12 @@ class Request():
         else:
             self.waiting = self.waiting + 1
         
-            # Check status
-            if self.progress + self.waiting >= self.profile.params.timeout:
-                self.status = "timeout" # Timeout
-                self.done_time = system_time
-            
         return self.status
 
 
 class RequestRecord():
     """
-    Recording of either done or undone requests per Function
+    Recording of requests both in total and per Function
     """
 
     def __init__(self, function_profile):
@@ -282,7 +293,7 @@ class RequestRecord():
                     self.timeout_request_record.append(request)
                     self.timeout_request_record_per_function[function_id].append(request)
 
-    def update_request(self, done_request_list):
+    def update_requests(self, done_request_list):
         for request in done_request_list:
             function_id = request.get_function_id()
             status = request.get_status()
@@ -406,17 +417,17 @@ class RequestRecord():
     def get_timeout_request_record(self):
         return self.timeout_request_record
 
-    def get_total_request_record_per_function(self):
-        return self.total_request_record
+    def get_total_request_record_per_function(self, function_id):
+        return self.total_request_record_per_function[function_id]
 
-    def get_success_request_record_per_function(self):
-        return self.success_request_record
+    def get_success_request_record_per_function(self, function_id):
+        return self.success_request_record_per_function[function_id]
 
-    def get_undone_request_record_per_function(self):
-        return self.undone_request_record
+    def get_undone_request_record_per_function(self, function_id):
+        return self.undone_request_record_per_function[function_id]
 
-    def get_timeout_request_record_per_function(self):
-        return self.timeout_request_record
+    def get_timeout_request_record_per_function(self, function_id):
+        return self.timeout_request_record_per_function[function_id]
 
     def reset(self):
         self.total_request_record = []
@@ -429,6 +440,80 @@ class RequestRecord():
             self.success_request_record_per_function[function_id] = []
             self.undone_request_record_per_function[function_id] = []
             self.timeout_request_record_per_function[function_id] = []
+
+
+class ResourceUtilsRecord():
+    """
+    Recording of CPU and memory utilizations per server in sec
+    """
+
+    def __init__(self, n_server):
+        self.n_server = n_server
+
+        self.resource_utils_record = {}
+
+        for i in range(self.n_server):
+            server = "server{}".format(i)
+            self.resource_utils_record[server] = {}
+            self.resource_utils_record[server]["cpu_util"] = []
+            self.resource_utils_record[server]["memory_util"] = []
+            self.resource_utils_record[server]["avg_cpu_util"] = 0
+            self.resource_utils_record[server]["avg_memory_util"] = 0
+        
+        self.resource_utils_record["avg_server"] = {}
+        self.resource_utils_record["avg_server"]["cpu_util"] = []
+        self.resource_utils_record["avg_server"]["memory_util"] = []
+        self.resource_utils_record["avg_server"]["avg_cpu_util"] = 0
+        self.resource_utils_record["avg_server"]["avg_memory_util"] = 0
+
+    def put_resource_utils(self, server, cpu_util, memory_util):
+        self.resource_utils_record[server]["cpu_util"].append(cpu_util)
+        self.resource_utils_record[server]["memory_util"].append(memory_util)
+
+    def calculate_avg_resource_utils(self):
+        for i in range(self.n_server):
+            server = "server{}".format(i)
+            self.resource_utils_record[server]["avg_cpu_util"] = np.mean(self.resource_utils_record[server]["cpu_util"])
+            self.resource_utils_record[server]["avg_memory_util"] = np.mean(self.resource_utils_record[server]["memory_util"])
+
+        for timestep in range(len(self.resource_utils_record["server0"]["cpu_util"])):
+            cpu_util_tmp_list = []
+            memory_util_tmp_list = []
+            
+            for i in range(self.n_server):
+                if i == 0:
+                    cpu_util_tmp_list = []
+                    memory_util_tmp_list = []
+
+                server = "server{}".format(i)
+                cpu_util_tmp_list.append(self.resource_utils_record[server]["cpu_util"][timestep])
+                memory_util_tmp_list.append(self.resource_utils_record[server]["memory_util"][timestep])
+
+            self.resource_utils_record["avg_server"]["cpu_util"].append(np.mean(cpu_util_tmp_list))
+            self.resource_utils_record["avg_server"]["memory_util"].append(np.mean(memory_util_tmp_list))
+
+        self.resource_utils_record["avg_server"]["avg_cpu_util"] = np.mean(self.resource_utils_record["avg_server"]["cpu_util"])
+        self.resource_utils_record["avg_server"]["avg_memory_util"] = np.mean(self.resource_utils_record["avg_server"]["memory_util"])
+    
+    def get_resource_utils_record(self):
+        return self.resource_utils_record
+
+    def reset(self):
+        self.resource_utils_record = {}
+        
+        for i in range(self.n_server):
+            server = "server{}".format(i)
+            self.resource_utils_record[server] = {}
+            self.resource_utils_record[server]["cpu_util"] = []
+            self.resource_utils_record[server]["memory_util"] = []
+            self.resource_utils_record[server]["avg_cpu_util"] = 0
+            self.resource_utils_record[server]["avg_memory_util"] = 0
+
+        self.resource_utils_record["avg_server"] = {}
+        self.resource_utils_record["avg_server"]["cpu_util"] = []
+        self.resource_utils_record["avg_server"]["memory_util"] = []
+        self.resource_utils_record["avg_server"]["avg_cpu_util"] = 0
+        self.resource_utils_record["avg_server"]["avg_memory_util"] = 0
 
 
 class Cache():
@@ -644,10 +729,20 @@ class ResourceManager():
     # Calculate available resources
     def get_resources_available(self):
         cpu_in_use, memory_in_use = self.get_registry_resources_in_use()
-        cpu_available = self.user_cpu - cpu_in_use
-        memory_available = self.user_memory - memory_in_use
+        user_cpu, user_memory = self.get_resources_total()
+        cpu_available = user_cpu - cpu_in_use
+        memory_available = user_memory - memory_in_use
         return cpu_available, memory_available
-    
+
+    # Calculate resource utilizations
+    def get_resource_utils(self):
+        cpu_in_use, memory_in_use = self.get_registry_resources_in_use()
+        user_cpu, user_memory = self.get_resources_total()
+        cpu_util = cpu_in_use / user_cpu
+        memory_util = memory_in_use / user_memory
+
+        return cpu_util, memory_util
+
     # Check whether a given request is available
     def check_availability(self, request_to_schedule):
         cpu_available, memory_available = self.get_resources_available()
@@ -909,4 +1004,3 @@ class Timetable():
     def get_size(self):
         return self.size
 
-    

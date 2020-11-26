@@ -1,5 +1,6 @@
-import numpy as np
-
+#
+# Parameters
+#
 
 class EnvParameters():
     """
@@ -46,6 +47,7 @@ class FunctionParameters():
         function_id=None,
         hash_value=0,
         cold_start_time=1,
+        sequence=None,
     ):
         self.ideal_cpu = ideal_cpu
         self.ideal_memory = ideal_memory
@@ -61,6 +63,8 @@ class FunctionParameters():
         self.function_id = function_id
         self.hash_value = hash_value
         self.cold_start_time = cold_start_time
+        self.sequence = sequence
+        
 
 class TimetableParameters():
     """
