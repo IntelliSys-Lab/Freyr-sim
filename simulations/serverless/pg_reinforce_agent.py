@@ -74,8 +74,7 @@ class ReinforceAgent():
             action_dim=self.action_dim,
             )
         self.loss = nn.CrossEntropyLoss()
-        # self.optimizer = torch.optim.Adam(self.net.parameters(), lr=learning_rate)
-        self.optimizer = torch.optim.RMSprop(self.net.parameters(), lr=learning_rate)
+        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=learning_rate)
 
     def choose_action(self, observation):
         self.net.eval()

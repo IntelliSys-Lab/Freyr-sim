@@ -15,11 +15,12 @@ def fixed_rm(
     timetable,
     env_params,
     logger_wrapper,
-    max_episode=500,
+    max_episode=10,
     save_plot=False,
     show_plot=True
 ):
     rm = "FixedRM"
+    function_profile = profile.get_function_profile()
 
     # Set up logger
     logger = logger_wrapper.get_logger(rm, True)
@@ -33,8 +34,7 @@ def fixed_rm(
     avg_completion_time_trend = []
     timeout_num_trend = []
     avg_completion_time_per_function_trend = {}
-    for function in profile.get_function_profile():
-        function_id = function.get_function_id()
+    for function_id in function_profile.keys():
         avg_completion_time_per_function_trend[function_id] = []
     
     # Start random provision

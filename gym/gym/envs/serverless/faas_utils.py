@@ -22,23 +22,6 @@ class Prioritize:
         return self.priority < other.priority
 
 
-class Application():
-    """
-    Application used by FaaSEnv
-    """
-    def __init__(self, functions):
-        if functions[0].application_id != None:
-            self.application_id = functions[0].application_id
-        else:
-            self.application_id = uuid.uuid1()
-        
-        self.function_ids = []
-            
-        for function in functions:
-            function.set_application_id(self.application_id)
-            self.function_ids.append(function.function_id)
-            
-
 class Function():
     """
     Function used by FaaSEnv
@@ -58,9 +41,6 @@ class Function():
         self.application_id = self.params.application_id
         self.resource_adjust_direction = [0, 0] # [cpu, memory]
     
-    def set_application_id(self, application_id):
-        self.application_id = application_id
-        
     def set_function(self, cpu=1, memory=1):
         self.cpu = cpu
         self.memory = memory
@@ -250,8 +230,7 @@ class RequestRecord():
         self.undone_request_record_per_function = {}
         self.timeout_request_record_per_function = {}
 
-        for function in function_profile:
-            function_id = function.get_function_id()
+        for function_id in function_profile.keys():
             self.total_request_record_per_function[function_id] = []
             self.success_request_record_per_function[function_id] = []
             self.undone_request_record_per_function[function_id] = []
@@ -951,30 +930,29 @@ class Profile():
     
     def __init__(
         self, 
-        function_profile, 
-        application_profile
+        function_profile
     ):
-        self.application_profile = application_profile
         self.function_profile = function_profile
-        self.default_function_profile = function_profile
-        
-    def put_application(self, application):
-        self.application_profile.append(application)
+        self.default_function_profile = cp.deepcopy(function_profile)
+
+        self.sequence_dict = {}
+        for function_id in self.function_profile.keys():
+            function = self.function_profile[function_id]
+            if function.get_sequence() is not None:
+                self.sequence_dict[function_id] = function.get_sequence()
         
     def put_function(self, function):
-        self.function_profile.append(function)
+        function_id = function.get_function_id()
+        self.function_profile[function_id] = function
 
     def get_function_profile(self):
         return self.function_profile
 
-    def get_application_profile_size(self):
-        return self.application_profile
-
-    def get_function_profile_size(self):
+    def get_size(self):
         return len(self.function_profile)
 
-    def get_application_profile_size(self):
-        return len(self.application_profile)
+    def get_sequence_dict(self):
+        return self.sequence_dict
         
     def reset(self):
         self.function_profile = cp.deepcopy(self.default_function_profile)
@@ -990,17 +968,16 @@ class Timetable():
         timetable=[]
     ):
         self.timetable = timetable
-        self.size = len(self.timetable)
         
     def put_timestep(self, row):
         self.timetable.append(row)
         
     def get_timestep(self, timestep):
-        if timestep >= len(self.timetable):
+        if timestep >= self.get_size():
             return None
         else:
             return self.timetable[timestep]
     
     def get_size(self):
-        return self.size
+        return len(self.timetable)
 

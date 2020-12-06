@@ -30,14 +30,14 @@ class FaaSEnv(gym.Env):
         self.system_time = 0
 
         # Set up request record
-        self.request_record = RequestRecord(self.profile.function_profile)
+        self.request_record = RequestRecord(self.profile.get_function_profile())
 
         # Set up resource utils record
         self.resource_utils_record = ResourceUtilsRecord(self.cluster.get_cluster_size())
         
         # Define action space
         # Action space size: 4*m+1
-        self.action_space = spaces.Discrete(4 * self.profile.get_function_profile_size() + 1)
+        self.action_space = spaces.Discrete(4 * self.profile.get_size() + 1)
         
         # Define observation space
         # Observation space size: 1 + 2 * n + 5 * m
@@ -65,7 +65,7 @@ class FaaSEnv(gym.Env):
         #  function_m_avg_completion_time,
         #  function_m_is_cold_start
         # ]
-        low = np.zeros(1 + 2 * self.cluster.get_cluster_size() + 5 * self.profile.get_function_profile_size(), dtype=np.float32)
+        low = np.zeros(1 + 2 * self.cluster.get_cluster_size() + 5 * self.profile.get_size(), dtype=np.float32)
         
         high_part_1 = np.array([10000])
 
@@ -76,7 +76,8 @@ class FaaSEnv(gym.Env):
         high_part_2 = np.array(high_part_2)
 
         high_part_3 = []
-        for function in self.profile.function_profile:
+        function_profile = self.profile.get_function_profile()
+        for _ in function_profile.keys():
             high_part_3.append(self.params.cpu_cap_per_function)
             high_part_3.append(self.params.memory_cap_per_function)
             high_part_3.append(100)
@@ -92,7 +93,11 @@ class FaaSEnv(gym.Env):
     # Decode discrete action into resource change
     #
     def decode_action(self, action):
+        function_profile = self.profile.get_function_profile()
+        function_profile_list = list(function_profile.keys())
+
         function_index = int(action/4)
+        function_id = function_profile_list[function_index]
         resource = None
         adjust = 0
         
@@ -109,28 +114,38 @@ class FaaSEnv(gym.Env):
             resource = 1 # Memory
             adjust = 1 # Increase one slot
         
-        return function_index, resource, adjust
+        return function_id, resource, adjust
         
     #
     # Update settings of function profile based on given action
     #
     def update_function_profile(self, action):
+        function_profile = self.profile.get_function_profile()
+
         if isinstance(action, list): # WARNING! Only used by greedy provision!
             actions = action 
             for act in actions:
-                function_index, resource, adjust = self.decode_action(act)
-                # if self.profile.function_profile[function_index].validate_resource_adjust(resource, adjust) is True:
-                #     self.profile.function_profile[function_index].set_resource_adjust(resource, adjust)
-                self.profile.function_profile[function_index].set_resource_adjust(resource, adjust)
+                function_id, resource, adjust = self.decode_action(act)
+                function = function_profile[function_id]
+                # if function_profile[function_id].validate_resource_adjust(resource, adjust) is True:
+                #     function_profile[function_id].set_resource_adjust(resource, adjust)
+                function.set_resource_adjust(resource, adjust)
+
+                # Set the sequence members as well if it is a function sequence
+                if function.get_sequence() is not None:
+                    sequence = function.get_sequence()
+                    for member_id in sequence:
+                        function_profile[member_id].set_resource_adjust(resource, adjust)
             
             return False
         
         if action == self.action_space.n - 1: # Explicit invalid action
             return False
         else:
-            function_index, resource, adjust = self.decode_action(action)
-            if self.profile.function_profile[function_index].validate_resource_adjust(resource, adjust) is True:
-                self.profile.function_profile[function_index].set_resource_adjust(resource, adjust)
+            function_id, resource, adjust = self.decode_action(action)
+            function = function_profile[function_id]
+            if function.validate_resource_adjust(resource, adjust) is True:
+                function.set_resource_adjust(resource, adjust)
                 return True
             else:
                 return False # Implicit invalid action
@@ -139,20 +154,22 @@ class FaaSEnv(gym.Env):
     # Update the cluster
     #
     def update_cluster(self):
+        function_profile = self.profile.get_function_profile()
+
         # Try to import timetable if not finished
         timestep = self.timetable.get_timestep(self.system_time - 1)
         request_to_schedule_list = []
 
         if timestep is not None:
-            for function_id in timestep:
-                for function in self.profile.function_profile:
-                    if function_id == function.function_id:
-                        request = Request(
-                            function=function, 
-                            invoke_time=self.system_time,
-                        )
-                        request_to_schedule_list.append(request)
-                        break
+            for function_id in timestep.keys():
+                function = function_profile[function_id]
+                invoke_num = timestep[function_id]
+                for _ in range(invoke_num):
+                    request = Request(
+                        function=function, 
+                        invoke_time=self.system_time,
+                    )
+                    request_to_schedule_list.append(request)
 
         self.request_record.put_requests(request_to_schedule_list)
         self.cluster.schedule(self.system_time, request_to_schedule_list)
@@ -170,6 +187,24 @@ class FaaSEnv(gym.Env):
             cpu_util, memory_util = server.resource_manager.get_resource_utils()
             self.resource_utils_record.put_resource_utils(server_id, cpu_util, memory_util)
 
+    # 
+    # Query request record for a given done time
+    #
+    def get_completion_time_reward(self, done_time):
+        total_completion_time = 0
+
+        # Query success requests
+        for request in self.request_record.get_success_request_record():
+            if request.get_done_time() == done_time:
+                total_completion_time = total_completion_time + request.get_completion_time()
+        
+        # Query timeout requests
+        for request in self.request_record.get_timeout_request_record():
+            if request.get_done_time() == done_time:
+                total_completion_time = total_completion_time + request.get_completion_time()
+
+        return total_completion_time
+
     def get_resource_utils_record(self):
         self.resource_utils_record.calculate_avg_resource_utils()
         return self.resource_utils_record.get_resource_utils_record()
@@ -179,9 +214,10 @@ class FaaSEnv(gym.Env):
         return throughput
 
     def get_function_dict(self):
+        function_profile = self.profile.get_function_profile()
         function_dict = {}
-        for function in self.profile.function_profile:
-            function_id = function.get_function_id()
+        for function_id in function_profile.keys():
+            function = function_profile[function_id]
             function_dict[function_id] = {}
 
             avg_completion_time = self.request_record.get_avg_completion_time_per_function(function_id)
@@ -213,6 +249,8 @@ class FaaSEnv(gym.Env):
     # Get observation for next timestep
     #
     def get_observation(self):
+        function_profile = self.profile.get_function_profile()
+
         num_undone_requests = self.request_record.get_undone_size()
         observation_part_1 = np.array([num_undone_requests])
 
@@ -224,11 +262,11 @@ class FaaSEnv(gym.Env):
         observation_part_2 = np.array(observation_part_2)
 
         observation_part_3 = []
-        for function in self.profile.function_profile:
-            function_id = function.get_function_id()
+        for function_id in function_profile.keys():
+            function = function_profile[function_id]
 
-            observation_part_3.append(function.cpu)
-            observation_part_3.append(function.memory)
+            observation_part_3.append(function.get_cpu())
+            observation_part_3.append(function.get_memory())
             observation_part_3.append(
                 self.request_record.get_avg_interval_per_function(self.system_time, function_id)
             )
@@ -247,22 +285,16 @@ class FaaSEnv(gym.Env):
     # Calculate reward for current timestep
     #
     def get_reward(self, num_timeout):
+        reward = 0
+
         # Timeout penalty
-        reward = -num_timeout * self.params.timeout_penalty 
+        reward = reward + -(num_timeout * self.params.timeout_penalty)
 
         # Reward of completion time
-        for request in self.request_record.get_success_request_record():
-            if request.get_done_time() == self.system_time:
-                reward = reward + -request.get_completion_time()
-        for request in self.request_record.get_timeout_request_record():
-            if request.get_done_time() == self.system_time:
-                reward = reward + -request.get_completion_time()
+        reward = reward + -self.get_completion_time_reward(self.system_time)
 
         # Normalized by throughput
-        throughput = self.get_function_throughput()
-        if throughput == 0:
-            throughput = 1
-            
+        throughput = np.max([self.get_function_throughput(), 1])
         reward = reward / throughput
             
         return reward
@@ -307,6 +339,7 @@ class FaaSEnv(gym.Env):
         pass
     
     def step(self, action=None):
+        function_profile = self.profile.get_function_profile()
         is_valid_action = self.update_function_profile(action)
         
         if is_valid_action is True:
@@ -325,7 +358,8 @@ class FaaSEnv(gym.Env):
             reward = self.get_reward(num_timeout)
             
             # Reset resource adjust direction for each function 
-            for function in self.profile.function_profile:
+            for function_id in function_profile.keys():
+                function = function_profile[function_id]
                 function.reset_resource_adjust_direction()
             
         # Get observation for next state

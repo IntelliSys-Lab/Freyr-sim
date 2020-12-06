@@ -13,9 +13,10 @@ from utils import log_trends, log_resource_utils, log_function_throughput
 # Encode sequential resource changes into discrete actions
 #
 def encode_action(function_profile, resource_adjust_list):
+    function_profile_list = list(function_profile.keys())
     actions = []
     
-    for index, function in enumerate(function_profile):
+    for index, function in enumerate(function_profile_list):
         function_id = function.get_function_id()
 
         if resource_adjust_list[function_id][0] != -1:
@@ -36,25 +37,25 @@ def greedy_rm(
     timetable,
     env_params,
     logger_wrapper,
-    max_episode=500,
-    plot_prefix_name="Greedy",
+    max_episode=10,
     save_plot=False,
     show_plot=True
 ):
+    rm = "FixedRM"
+    function_profile = profile.get_function_profile()
+
     # Set up logger
-    logger = logger_wrapper.get_logger("greedy_provision")
+    logger = logger_wrapper.get_logger(rm, True)
     
     # Make environment
     env = gym.make("FaaS-v0", params=env_params, profile=profile, timetable=timetable)
     env.seed(114514) # Reproducible, policy gradient has high variance
     
     reward_trend = []
-    avg_slow_down_trend = []
     avg_completion_time_trend = []
     timeout_num_trend = []
     avg_completion_time_per_function_trend = {}
-    for function in profile.get_function_profile():
-        function_id = function.get_function_id()
+    for function_id in function_profile.keys():
         avg_completion_time_per_function_trend[function_id] = []
     
     # Start random provision
@@ -74,6 +75,7 @@ def greedy_rm(
             
             if system_time < info["system_time"]:
                 system_time = info["system_time"]
+                function_throughput_list.append(info["function_throughput"])
                 record = info["request_record"].request_per_function_record
                 
                 #
@@ -82,12 +84,12 @@ def greedy_rm(
                 
                 # Record last two completion time for each function and its decay at each system timestep
                 completion_time_decay_record = {}
-                for function in profile.function_profile:
+                for function_id in function_profile.keys():
                     completion_time_decay_record[function.function_id] = 1.0
                     
                 # Adjustment for each function
                 resource_adjust_list = {}
-                for function in profile.function_profile:
+                for function_id in function_profile.keys():
                     resource_adjust_list[function.function_id] = []
                 
                 # Update completion time decay for each function
@@ -119,7 +121,7 @@ def greedy_rm(
                     else:
                         resource_adjust_list[id] = [0, 2] # Decrease one slot for CPU and memory
                 
-                action = encode_action(profile.function_profile, resource_adjust_list)
+                action = encode_action(function_profile, resource_adjust_list)
 
             logger.debug("")
             logger.debug("Actual timestep {}".format(actual_time))
@@ -131,7 +133,6 @@ def greedy_rm(
             reward_sum = reward_sum + reward
             
             if done:
-                avg_slow_down = info["avg_slow_down"]
                 avg_completion_time = info["avg_completion_time"]
                 timeout_num = info["timeout_num"]
                 
@@ -144,12 +145,10 @@ def greedy_rm(
                 logger.info("{} actual timesteps".format(actual_time))
                 logger.info("{} system timesteps".format(system_time))
                 logger.info("Total reward: {}".format(reward_sum))
-                logger.info("Avg slowdown: {}".format(avg_slow_down))
                 logger.info("Avg completion time: {}".format(avg_completion_time))
                 logger.info("Timeout num: {}".format(timeout_num))
                 
                 reward_trend.append(reward_sum)
-                avg_slow_down_trend.append(avg_slow_down)
                 avg_completion_time_trend.append(avg_completion_time)
                 timeout_num_trend.append(timeout_num)
 
@@ -188,16 +187,14 @@ def greedy_rm(
     
     if save_plot is True:
         plotter.plot_save(
-            prefix_name=plot_prefix_name, 
+            prefix_name=rm, 
             reward_trend=reward_trend, 
-            avg_slow_down_trend=avg_slow_down_trend, 
             avg_completion_time_trend=avg_completion_time_trend,
             timeout_num_trend=timeout_num_trend
         )
     if show_plot is True:
         plotter.plot_show(
             reward_trend=reward_trend, 
-            avg_slow_down_trend=avg_slow_down_trend, 
             avg_completion_time_trend=avg_completion_time_trend,
             timeout_num_trend=timeout_num_trend,
         )

@@ -24,6 +24,7 @@ def lambda_rm_train(
     show_plot=True,
 ):
     rm = "LambdaRM_train"
+    function_profile = profile.get_function_profile()
 
     # Set up logger
     logger = logger_wrapper.get_logger(rm, True)
@@ -36,7 +37,7 @@ def lambda_rm_train(
     pg_agent = PPO2Agent(
         observation_dim=env.observation_space.shape[0],
         action_dim=env.action_space.n,
-        hidden_dims=[64, 32],
+        hidden_dims=[32, 16],
         learning_rate=0.002,
         discount_factor=1,
         ppo_clip=0.2,
@@ -49,8 +50,7 @@ def lambda_rm_train(
     timeout_num_trend = []
     loss_trend = []
     avg_completion_time_per_function_trend = {}
-    for function in profile.get_function_profile():
-        function_id = function.get_function_id()
+    for function_id in function_profile.keys():
         avg_completion_time_per_function_trend[function_id] = []
 
     # Record max sum rewards
@@ -194,6 +194,7 @@ def lambda_rm_eval(
     show_plot=True,
 ):
     rm = "LambdaRM_eval"
+    function_profile = profile.get_function_profile()
 
     # Set up logger
     logger = logger_wrapper.get_logger(rm, True)
@@ -206,7 +207,7 @@ def lambda_rm_eval(
     pg_agent = PPO2Agent(
         observation_dim=env.observation_space.shape[0],
         action_dim=env.action_space.n,
-        hidden_dims=[64, 32],
+        hidden_dims=[32, 16],
         learning_rate=0.002,
         discount_factor=1,
         ppo_clip=0.2,
@@ -222,8 +223,7 @@ def lambda_rm_eval(
     timeout_num_trend = []
     loss_trend = []
     avg_completion_time_per_function_trend = {}
-    for function in profile.get_function_profile():
-        function_id = function.get_function_id()
+    for function_id in function_profile.keys():
         avg_completion_time_per_function_trend[function_id] = []
     
     # Start random provision

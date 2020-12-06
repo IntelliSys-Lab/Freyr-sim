@@ -3,19 +3,20 @@ sys.path.append("../../gym")
 import scipy.stats as stats
 import pandas as pd
 import gym
-from gym.envs.serverless.faas_utils import Function, Application, Profile, Timetable
+from gym.envs.serverless.faas_utils import Function, Profile, Timetable
 from gym.envs.serverless.faas_params import FunctionParameters, TimetableParameters
 
 
-class WorkflowGenerator():
+class WorkloadGenerator():
     """
-    Generate workflows running on FaaSEnv
+    Generate workloads running on FaaSEnv
     """
     def ensure_params(self):
         hash_value = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
         # Generate profile parameters
         ET_Image_Resizing_params = FunctionParameters(
+            function_id="ET_Image_Resizing",
             ideal_cpu=4, 
             ideal_memory=3, 
             ideal_duration=1, 
@@ -24,10 +25,11 @@ class WorkflowGenerator():
             timeout=60,
             cpu_cap_per_function=8,
             memory_cap_per_function=8,
-            hash_value=hash_value[0],
+            hash_value=hash_value.pop(),
             cold_start_time=0.5,
         )
         ET_Streaming_Analytics_params = FunctionParameters(
+            function_id="ET_Streaming_Analytics",
             ideal_cpu=4, 
             ideal_memory=4, 
             ideal_duration=1, 
@@ -36,10 +38,11 @@ class WorkflowGenerator():
             timeout=60,
             cpu_cap_per_function=8,
             memory_cap_per_function=8,
-            hash_value=hash_value[1],
+            hash_value=hash_value.pop(),
             cold_start_time=1,
         )
         ET_Email_Gen_params = FunctionParameters(
+            function_id="ET_Email_Gen",
             ideal_cpu=4, 
             ideal_memory=4, 
             ideal_duration=2, 
@@ -48,10 +51,11 @@ class WorkflowGenerator():
             timeout=60,
             cpu_cap_per_function=8,
             memory_cap_per_function=8,
-            hash_value=hash_value[2],
+            hash_value=hash_value.pop(),
             cold_start_time=1,
         )
         ET_Stock_Analysis_params = FunctionParameters(
+            function_id="ET_Stock_Analysis",
             ideal_cpu=4, 
             ideal_memory=3, 
             ideal_duration=3, 
@@ -60,10 +64,11 @@ class WorkflowGenerator():
             timeout=60,
             cpu_cap_per_function=8,
             memory_cap_per_function=8,
-            hash_value=hash_value[3],
+            hash_value=hash_value.pop(),
             cold_start_time=1,
         )
         ET_File_Encrypt_params = FunctionParameters(
+            function_id="ET_File_Encrypt",
             ideal_cpu=4, 
             ideal_memory=4, 
             ideal_duration=4, 
@@ -72,10 +77,11 @@ class WorkflowGenerator():
             timeout=60,
             cpu_cap_per_function=8,
             memory_cap_per_function=8,
-            hash_value=hash_value[4],
+            hash_value=hash_value.pop(),
             cold_start_time=1.5,
         )
         ET_Sentiment_Review_params = FunctionParameters(
+            function_id="ET_Sentiment_Review",
             ideal_cpu=4, 
             ideal_memory=3, 
             ideal_duration=5, 
@@ -84,10 +90,11 @@ class WorkflowGenerator():
             timeout=60,
             cpu_cap_per_function=8,
             memory_cap_per_function=8,
-            hash_value=hash_value[5],
+            hash_value=hash_value.pop(),
             cold_start_time=2,
         )
         MP_Nearest_Neighbor_params = FunctionParameters(
+            function_id="MP_Nearest_Neighbor",
             ideal_cpu=6, 
             ideal_memory=6, 
             ideal_duration=10, 
@@ -96,10 +103,11 @@ class WorkflowGenerator():
             timeout=600,
             cpu_cap_per_function=8,
             memory_cap_per_function=8,
-            hash_value=hash_value[6],
+            hash_value=hash_value.pop(),
             cold_start_time=3,
         ) 
         MP_Comp_Fluid_Dynamics_params = FunctionParameters(
+            function_id="MP_Comp_Fluid_Dynamics",
             ideal_cpu=8, 
             ideal_memory=4, 
             ideal_duration=21, 
@@ -108,10 +116,11 @@ class WorkflowGenerator():
             timeout=600,
             cpu_cap_per_function=8,
             memory_cap_per_function=8,
-            hash_value=hash_value[7],
+            hash_value=hash_value.pop(),
             cold_start_time=5,
         )
         MP_Sorting_params = FunctionParameters(
+            function_id="MP_Sorting",
             ideal_cpu=8, 
             ideal_memory=4, 
             ideal_duration=45, 
@@ -120,10 +129,11 @@ class WorkflowGenerator():
             timeout=600,
             cpu_cap_per_function=8,
             memory_cap_per_function=8,
-            hash_value=hash_value[8],
-            cold_start_time=8,
+            hash_value=hash_value.pop(),
+            cold_start_time=5,
         ) 
         MP_Matrix_Multiply_params = FunctionParameters(
+            function_id="MP_Matrix_Multiply",
             ideal_cpu=8, 
             ideal_memory=6, 
             ideal_duration=20, 
@@ -132,31 +142,28 @@ class WorkflowGenerator():
             timeout=600,
             cpu_cap_per_function=8,
             memory_cap_per_function=8,
-            hash_value=hash_value[9],
+            hash_value=hash_value.pop(),
             cold_start_time=4,
         )
-        
-        function_params = [
-            ET_Image_Resizing_params, 
-            ET_Streaming_Analytics_params,
-            ET_Email_Gen_params,
-            ET_Stock_Analysis_params,
-            ET_File_Encrypt_params,
-            ET_Sentiment_Review_params,
-            MP_Nearest_Neighbor_params,
-            MP_Comp_Fluid_Dynamics_params,
-            MP_Sorting_params,
-            MP_Matrix_Multiply_params
-        ]
-        application_params = []
-        
-        profile_params = [function_params, application_params]
+
+        # Create Profile paramters
+        profile_params = {}
+        profile_params["ET_Image_Resizing"] = ET_Image_Resizing_params
+        profile_params["ET_Streaming_Analytics"] = ET_Streaming_Analytics_params
+        profile_params["ET_Email_Gen"] = ET_Email_Gen_params
+        profile_params["ET_Stock_Analysis"] = ET_Stock_Analysis_params
+        profile_params["ET_File_Encrypt"] = ET_File_Encrypt_params
+        profile_params["ET_Sentiment_Review"] = ET_Sentiment_Review_params
+        profile_params["MP_Nearest_Neighbor"] = MP_Nearest_Neighbor_params
+        profile_params["MP_Comp_Fluid_Dynamics"] = MP_Comp_Fluid_Dynamics_params
+        profile_params["MP_Sorting"] = MP_Sorting_params
+        profile_params["MP_Matrix_Multiply"] = MP_Matrix_Multiply_params
         
         # Generate timetable parameters
-        mod = [2, 2, 2, 2, 2, 5, 30, 30, 30, 30]
+        mod = [1, 1, 1, 1, 2, 2, 4, 4, 8, 10]
         
         timetable_params = TimetableParameters(
-            max_timestep=200, 
+            max_timestep=60, 
             distribution_type="mod",
             mod_factors=mod
         )
@@ -203,21 +210,18 @@ class WorkflowGenerator():
 
             for _, row in invocation_traces.iterrows():
                 if row["HashFunction"] == function_hash:
-                    # Reference: 
-                    # https://docs.microsoft.com/en-us/azure/azure-functions/functions-scale
-                    if row["Trigger"] == "http":
-                        function_params_dict[function_hash]["timeout"] = 230 
-                    else:
-                        function_params_dict[function_hash]["timeout"] = 600 # Max timeout limit
-                        # function_params_dict[function_hash]["timeout"] = 300 # Default timeout limit
+                    function_params_dict[function_hash]["timeout"] = 60 # Max timeout limit
         
-        # Create Profile paramters
-        function_params = []
-        application_params = []
+        # Create Profile paramters and sequence dictionary
+        profile_params = {}
+        sequence_dict = {}
+        for application_id in memory_traces["HashApp"]:
+            if application_id not in sequence_dict.keys():
+                sequence_dict[application_id] = []
 
         hash_value = 0
         for function_hash in function_params_dict.keys():
-            function = FunctionParameters(
+            function_params = FunctionParameters(
                 ideal_cpu=function_params_dict[function_hash]["ideal_cpu"], 
                 ideal_memory=function_params_dict[function_hash]["ideal_memory"],
                 ideal_duration=function_params_dict[function_hash]["ideal_duration"],
@@ -234,23 +238,20 @@ class WorkflowGenerator():
                 cold_start_time=1,
             )
 
-            function_params.append(function)
+            profile_params[function_params.function_id] = function_params
+            sequence_dict[function_params.application_id].append(function_params.function_id)
             hash_value = hash_value + 1
 
-        app_hash_list = memory_traces["HashApp"]
-        for _ in app_hash_list:
-            application_params.append([])
-
-        for i in range(len(function_params)):
-            for j in range(len(app_hash_list)):
-                if function_params[i].application_id == app_hash_list[j]:
-                    application_params[j].append(i)
-
-        profile_params = [function_params, application_params]
+        # Add sequence inforation to each entry function
+        for application_id in sequence_dict.keys():
+            total_sequence = sequence_dict[application_id]
+            if len(total_sequence) > 1:
+                entry = total_sequence[0]
+                profile_params[entry].sequence = total_sequence[1:]
 
         # Create timetable based on invocation traces
         timetable_params = TimetableParameters(
-            max_timestep=1440, 
+            max_timestep=60, 
             distribution_type="azure",
             azure_invocation_traces=invocation_traces
         )
@@ -258,13 +259,12 @@ class WorkflowGenerator():
         return profile_params, timetable_params
 
     def generate_profile(self, profile_params):
-        function_params = profile_params[0]
-        application_params = profile_params[1]
+        function_profile = {}
         
-        function_list = []
-        
-        for param in function_params:
+        for function_id in profile_params.keys():
+            param = profile_params[function_id]
             function = Function(param)
+
             # function.set_function(
             #     cpu=param.cpu_cap_per_function, 
             #     memory=param.memory_cap_per_function
@@ -280,21 +280,9 @@ class WorkflowGenerator():
             #     memory=param.memory_least_hint
             # ) # Initially set as hinted
             
-            function_list.append(function)
+            function_profile[function_id] = function
         
-        application_list = []
-        if len(application_params) != 0:
-            for group in application_params:
-                functions = []
-                for function_index in group:
-                    functions.append(function_list[function_index])
-                    
-                application = Application(functions)
-                application_list.append(application)
-        
-        profile = Profile(function_profile=function_list, 
-                          application_profile=application_list
-                          )
+        profile = Profile(function_profile=function_profile)
         return profile
     
     def mod_distribution(
@@ -305,18 +293,21 @@ class WorkflowGenerator():
         max_timestep = timetable_params.max_timestep
         mod_factors = timetable_params.mod_factors
         
-        function_list = profile.function_profile
+        function_profile_list = list(profile.get_function_profile().keys())
         timetable_list = []
         
-        for i in range(max_timestep):
-            timestep = []
+        for timestep_i in range(max_timestep):
+            timestep = {}
             
-            for factor_i in range(len(mod_factors)):
-                if i%mod_factors[factor_i] == 0:
-                    timestep.append(function_list[factor_i].function_id)
+            for function_i, factor in enumerate(mod_factors):
+                function_id = function_profile_list[function_i]
+                if timestep_i % factor == 0:
+                    timestep[function_id] = 1
+                else:
+                    timestep[function_id] = 0
                 
             timetable_list.append(timestep)
-            
+
         timetable = Timetable(timetable_list)
         return timetable
     
@@ -328,11 +319,11 @@ class WorkflowGenerator():
         max_timestep = timetable_params.max_timestep
         mu = timetable_params.poisson_mu
         
-        function_list = profile.function_profile
+        function_profile_list = list(profile.get_function_profile().keys())
         timetable_list = []
         poisson_time_list = []
         
-        for function in function_list:
+        for _ in function_profile_list:
             poisson_time_list.append(
                 stats.poisson.rvs(
                     mu=mu, 
@@ -340,12 +331,12 @@ class WorkflowGenerator():
                 )
             )
         
-        for i in range(max_timestep):
+        for timestep_i in range(max_timestep):
             timestep = []
             
-            for poisson_i in range(len(poisson_time_list)):
-                for t in range(poisson_time_list[poisson_i][i]):
-                    timestep.append(function_list[poisson_i].function_id)
+            for function_i, invoke_num in enumerate(poisson_time_list):
+                function_id = function_profile_list[function_i]
+                timestep[function_id] = invoke_num
                 
             timetable_list.append(timestep)
             
@@ -360,11 +351,11 @@ class WorkflowGenerator():
         max_timestep = timetable_params.max_timestep
         p = timetable_params.bernoulli_p
         
-        function_list = profile.function_profile
+        function_profile_list = list(profile.get_function_profile().keys())
         timetable_list = []
         bernoulli_time_list = []
         
-        for function in function_list:
+        for _ in function_list:
             bernoulli_time_list.append(
                 stats.bernoulli.rvs(
                     p=p, 
@@ -372,12 +363,12 @@ class WorkflowGenerator():
                 )
             )
         
-        for i in range(max_timestep):
+        for timestep_i in range(max_timestep):
             timestep = []
             
-            for bernoulli_i in range(len(bernoulli_time_list)):
-                for t in range(bernoulli_time_list[bernoulli_i][i]):
-                    timestep.append(function_list[bernoulli_i].function_id)
+            for function_i, invoke_num in enumerate(bernoulli_time_list):
+                function_id = function_profile_list[function_i]
+                timestep[function_id] = invoke_num
                 
             timetable_list.append(timestep)
             
@@ -392,15 +383,16 @@ class WorkflowGenerator():
         max_timestep = timetable_params.max_timestep
         invocation_traces = timetable_params.azure_invocation_traces
 
-        function_list = profile.function_profile
+        function_profile_list = list(profile.get_function_profile().keys())
         timetable_list = []
 
-        for i in range(max_timestep):
+        for timestep_i in range(max_timestep):
             timestep = []
 
             for _, row in invocation_traces.iterrows():
-                for _ in range(row["{}".format(i+1)]):
-                    timestep.append(row["HashFunction"])
+                function_id = row["FunctionId"]
+                invoke_num = row["{}".format(i+1)]
+                timestep[function_id] = invoke_num
 
             timetable_list.append(timestep)
         
@@ -423,7 +415,7 @@ class WorkflowGenerator():
         
         return timetable
     
-    def generate_workflow(
+    def generate_workload(
         self, 
         default="azure",
         profile_params=None, 

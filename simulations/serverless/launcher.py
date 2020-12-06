@@ -3,7 +3,7 @@ sys.path.append("../../gym")
 import numpy as np
 import gym
 from gym.envs.serverless.faas_params import EnvParameters, TimetableParameters
-from workflow_generator import WorkflowGenerator
+from workload_generator import WorkloadGenerator
 from logger import Logger
 from fixed_rm import fixed_rm
 from greedy_rm import greedy_rm
@@ -16,11 +16,11 @@ def launch():
     # Set up logger wrapper
     logger_wrapper = Logger()
 
-    # Generate workflow
-    workflow_generator = WorkflowGenerator()
+    # Generate workload
+    workload_generator = WorkloadGenerator()
     
     timetable_params = TimetableParameters(
-        max_timestep=120,
+        max_timestep=60,
         distribution_type="mod",
         mod_factors=[1, 1, 1, 1, 2, 2, 4, 4, 8, 10]
     )
@@ -36,7 +36,7 @@ def launch():
     # )
     # timetable_params = None # Azure traces
     
-    profile, timetable = workflow_generator.generate_workflow(
+    profile, timetable = workload_generator.generate_workload(
         # default="azure",
         default="ensure",
         timetable_params=timetable_params
