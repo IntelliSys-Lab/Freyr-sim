@@ -22,15 +22,15 @@ def launch():
     timetable_params = TimetableParameters(
         max_timestep=60,
         distribution_type="mod",
-        mod_factors=[1, 1, 1, 1, 2, 2, 4, 4, 8, 10]
+        mod_factors=[1, 1, 1, 1, 2, 2, 4, 4, 6, 8]
     )
     # timetable_params = TimetableParameters(
-    #     max_timestep=200,
+    #     max_timestep=60,
     #     distribution_type="bernoulli",
     #     bernoulli_p=0.5
     # )
     # timetable_params = TimetableParameters(
-    #     max_timestep=200,
+    #     max_timestep=60,
     #     distribution_type="poisson",
     #     poisson_mu=0.8
     # )
@@ -79,7 +79,7 @@ def launch():
         profile=profile,
         timetable=timetable,
         env_params=env_params,
-        max_episode=500,
+        max_episode=1000,
         model_save_path="ckpt/best_model.pth",
         save_plot=True,
         show_plot=False,

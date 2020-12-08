@@ -145,8 +145,9 @@ class ReinforceAgent():
         return baseline
 
     def norm(self, x):
+        eps = np.finfo(np.float32).eps.item()
         x = x - np.mean(x)
-        x = x / np.std(x)
+        x = x / (np.std(x) + eps)
 
         return x
 
@@ -156,6 +157,8 @@ class ReinforceAgent():
         for i in reversed(range(len(self.rewards))):
             tmp = tmp * self.gamma + self.rewards[i]
             discounted_rewards[i] = tmp
+
+        discounted_rewards = self.norm(discounted_rewards)
 
         return discounted_rewards
 

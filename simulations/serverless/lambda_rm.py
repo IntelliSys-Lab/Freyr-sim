@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import gym
 from logger import Logger
 from plotter import Plotter
-from pg_ppo2_agent import PPO2Agent
+from ppo2_agent import PPO2Agent
 from utils import log_trends, log_resource_utils, log_function_throughput
 
 
@@ -18,7 +18,7 @@ def lambda_rm_train(
     timetable,
     env_params,
     logger_wrapper,
-    max_episode=200,
+    max_episode=500,
     model_save_path="ckpt/best_model.pth",
     save_plot=False,
     show_plot=True,
@@ -37,8 +37,8 @@ def lambda_rm_train(
     pg_agent = PPO2Agent(
         observation_dim=env.observation_space.shape[0],
         action_dim=env.action_space.n,
-        hidden_dims=[32, 16],
-        learning_rate=0.002,
+        hidden_dims=[64, 32],
+        learning_rate=0.001,
         discount_factor=1,
         ppo_clip=0.2,
         ppo_steps=5
@@ -179,7 +179,7 @@ def lambda_rm_train(
         avg_completion_time_trend=avg_completion_time_trend,
         avg_completion_time_per_function_trend=avg_completion_time_per_function_trend,
         timeout_num_trend=timeout_num_trend,
-        loss_trend=None,
+        loss_trend=loss_trend,
     )
 
     
@@ -207,8 +207,8 @@ def lambda_rm_eval(
     pg_agent = PPO2Agent(
         observation_dim=env.observation_space.shape[0],
         action_dim=env.action_space.n,
-        hidden_dims=[32, 16],
-        learning_rate=0.002,
+        hidden_dims=[64, 32],
+        learning_rate=0.001,
         discount_factor=1,
         ppo_clip=0.2,
         ppo_steps=5

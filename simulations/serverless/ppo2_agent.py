@@ -180,8 +180,8 @@ class PPO2Agent():
         return loss
     
     def norm(self, x):
-        x = x - np.mean(x)
-        x = x / np.std(x)
+        eps = np.finfo(np.float32).eps.item()
+        x = (x - x.mean()) / (x.std() + eps)
 
         return x
 
@@ -193,6 +193,7 @@ class PPO2Agent():
             discounted_rewards.append(tmp)
         
         discounted_rewards = torch.Tensor(discounted_rewards[::-1])
+        discounted_rewards = self.norm(discounted_rewards)
 
         return discounted_rewards
     
