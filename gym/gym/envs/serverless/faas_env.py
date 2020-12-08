@@ -187,24 +187,6 @@ class FaaSEnv(gym.Env):
             cpu_util, memory_util = server.resource_manager.get_resource_utils()
             self.resource_utils_record.put_resource_utils(server_id, cpu_util, memory_util)
 
-    # 
-    # Query request record for a given done time
-    #
-    def get_completion_time_reward(self, done_time):
-        total_completion_time = 0
-
-        # Query success requests
-        for request in self.request_record.get_success_request_record():
-            if request.get_done_time() == done_time:
-                total_completion_time = total_completion_time + request.get_completion_time()
-        
-        # Query timeout requests
-        for request in self.request_record.get_timeout_request_record():
-            if request.get_done_time() == done_time:
-                total_completion_time = total_completion_time + request.get_completion_time()
-
-        return total_completion_time
-
     def get_resource_utils_record(self):
         self.resource_utils_record.calculate_avg_resource_utils()
         return self.resource_utils_record.get_resource_utils_record()
@@ -291,9 +273,9 @@ class FaaSEnv(gym.Env):
         reward = reward + -(num_timeout * self.params.timeout_penalty)
 
         # Reward of completion time
-        reward = reward + -self.get_completion_time_reward(self.system_time)
+        reward = reward + -self.request_record.get_current_completion_time(self.system_time)
 
-        # Normalized by throughput
+        # Discounted by throughput
         throughput = np.max([self.get_function_throughput(), 1])
         reward = reward / throughput
             

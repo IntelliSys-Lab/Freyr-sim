@@ -303,6 +303,21 @@ class RequestRecord():
         timeout_size = len(self.timeout_request_record)
         return timeout_size
 
+    def get_current_completion_time(self, done_time):
+        total_completion_time = 0
+
+        # Query success requests
+        for request in self.success_request_record:
+            if request.get_done_time() == done_time:
+                total_completion_time = total_completion_time + request.get_completion_time()
+        
+        # Query timeout requests
+        for request in self.timeout_request_record:
+            if request.get_done_time() == done_time:
+                total_completion_time = total_completion_time + request.get_completion_time()
+
+        return total_completion_time
+
     def get_avg_completion_time(self):
         request_num = 0
         total_completion_time = 0
