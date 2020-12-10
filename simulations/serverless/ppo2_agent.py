@@ -78,7 +78,7 @@ class PPO2Agent():
         self.observation_dim = observation_dim
         self.action_dim = action_dim
         self.hidden_dims = hidden_dims
-        self.lr = learning_rate
+        self.learning_rate = learning_rate
         self.gamma = discount_factor
 
         self.ppo_clip = ppo_clip
@@ -93,7 +93,7 @@ class PPO2Agent():
         self.model = self.build_model()
 
         self.loss = nn.CrossEntropyLoss()
-        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=learning_rate)
+        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr= self.learning_rate)
 
     def build_model(self):
         actor = PGNet(

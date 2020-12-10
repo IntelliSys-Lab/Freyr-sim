@@ -19,6 +19,11 @@ def lambda_rm_train(
     env_params,
     logger_wrapper,
     max_episode=500,
+    hidden_dims=[32, 16, 8],
+    learning_rate=0.001,
+    discount_factor=1,
+    ppo_clip=0.2,
+    ppo_steps=5,
     model_save_path="ckpt/best_model.pth",
     save_plot=False,
     show_plot=True,
@@ -37,11 +42,11 @@ def lambda_rm_train(
     pg_agent = PPO2Agent(
         observation_dim=env.observation_space.shape[0],
         action_dim=env.action_space.n,
-        hidden_dims=[64, 32],
-        learning_rate=0.001,
-        discount_factor=1,
-        ppo_clip=0.2,
-        ppo_steps=5
+        hidden_dims=hidden_dims,
+        learning_rate=learning_rate,
+        discount_factor=discount_factor,
+        ppo_clip=ppo_clip,
+        ppo_steps=ppo_steps
     )
     
     # Trends recording
@@ -189,6 +194,11 @@ def lambda_rm_eval(
     env_params,
     logger_wrapper,
     max_episode=10,
+    hidden_dims=[32, 16, 8],
+    learning_rate=0.001,
+    discount_factor=1,
+    ppo_clip=0.2,
+    ppo_steps=5,
     checkpoint_path="ckpt/best_model.pth",
     save_plot=False,
     show_plot=True,
@@ -207,11 +217,11 @@ def lambda_rm_eval(
     pg_agent = PPO2Agent(
         observation_dim=env.observation_space.shape[0],
         action_dim=env.action_space.n,
-        hidden_dims=[64, 32],
-        learning_rate=0.001,
-        discount_factor=1,
-        ppo_clip=0.2,
-        ppo_steps=5
+        hidden_dims=hidden_dims,
+        learning_rate=learning_rate,
+        discount_factor=discount_factor,
+        ppo_clip=ppo_clip,
+        ppo_steps=ppo_steps
     )
 
     # Restore checkpoint model

@@ -907,8 +907,7 @@ class Cluster():
 
         return total_request_list, total_num_timeout
 
-    # A hashing-greedy algorithm based on OpenWhisk scheduling algorithm
-    # Reference: 
+    # A hashing-greedy algorithm based on OpenWhisk load balancer
     # https://github.com/apache/openwhisk/blob/master/core/controller/src/main/scala/org/apache/openwhisk/core/loadBalancer/ShardingContainerPoolBalancer.scala
     def schedule(self, system_time, request_list):
         for request in request_list:

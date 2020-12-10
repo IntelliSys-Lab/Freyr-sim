@@ -310,8 +310,9 @@ class FaaSEnv(gym.Env):
         return info
         
     """
-    Override
+    Overwrite gym functions
     """
+
     def render(self):
         logger.warn("To do")
         pass

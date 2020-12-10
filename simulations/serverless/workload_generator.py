@@ -9,7 +9,7 @@ from gym.envs.serverless.faas_params import FunctionParameters, TimetableParamet
 
 class WorkloadGenerator():
     """
-    Generate workloads running on FaaSEnv
+    Generate workloads running in FaaSEnv
     """
     def ensure_params(self):
         hash_value = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -47,7 +47,7 @@ class WorkloadGenerator():
             ideal_memory=4, 
             ideal_duration=2, 
             cpu_least_hint=1, 
-            memory_least_hint=2,
+            memory_least_hint=1,
             timeout=60,
             cpu_cap_per_function=8,
             memory_cap_per_function=8,
@@ -60,7 +60,7 @@ class WorkloadGenerator():
             ideal_memory=3, 
             ideal_duration=3, 
             cpu_least_hint=1, 
-            memory_least_hint=2,
+            memory_least_hint=1,
             timeout=60,
             cpu_cap_per_function=8,
             memory_cap_per_function=8,
@@ -305,7 +305,7 @@ class WorkloadGenerator():
                     timestep[function_id] = 1
                 else:
                     timestep[function_id] = 0
-                
+
             timetable_list.append(timestep)
 
         timetable = Timetable(timetable_list)
@@ -332,7 +332,7 @@ class WorkloadGenerator():
             )
         
         for timestep_i in range(max_timestep):
-            timestep = []
+            timestep = {}
             
             for function_i, invoke_num in enumerate(poisson_time_list):
                 function_id = function_profile_list[function_i]
@@ -364,7 +364,7 @@ class WorkloadGenerator():
             )
         
         for timestep_i in range(max_timestep):
-            timestep = []
+            timestep = {}
             
             for function_i, invoke_num in enumerate(bernoulli_time_list):
                 function_id = function_profile_list[function_i]
@@ -387,7 +387,7 @@ class WorkloadGenerator():
         timetable_list = []
 
         for timestep_i in range(max_timestep):
-            timestep = []
+            timestep = {}
 
             for _, row in invocation_traces.iterrows():
                 function_id = row["FunctionId"]
