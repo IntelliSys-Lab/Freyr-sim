@@ -13,7 +13,7 @@ class PGNet(nn.Module):
         hidden_dims,
         action_dim
     ):
-        super(PGNet, self).__init__()
+        super().__init__()
         
         if isinstance(hidden_dims, int):
             hidden_dims = [hidden_dims]
@@ -49,117 +49,190 @@ class PGNet(nn.Module):
 class ActorCritic(nn.Module):
     def __init__(
         self, 
-        actor,
-        critic
+        actor_cpu,
+        actor_memory,
+        critic_cpu,
+        critic_memory,
     ):
         super().__init__()
 
-        self.actor = actor
-        self.critic = critic
+        self.actor_cpu = actor_cpu
+        self.actor_memory = actor_memory
+        self.critic_cpu = critic_cpu
+        self.critic_memory = critic_memory
 
-    def forward(self, observation):
-        action_pred = self.actor(observation)
-        value_pred = self.critic(observation)
+    def forward(self, observation_cpu, observation_memory):
+        action_pred_cpu = self.actor_cpu(observation_cpu)
+        action_pred_memory = self.actor_memory(observation_memory)
+        value_pred_cpu = self.critic_cpu(observation_cpu)
+        value_pred_memory = self.critic_memory(observation_memory)
         
-        return action_pred, value_pred
+        return action_pred_cpu, action_pred_memory, value_pred_cpu, value_pred_memory
 
 
 class PPO2Agent():
     def __init__(
         self,
-        observation_dim,
-        action_dim,
-        hidden_dims=[64,32],
+        observation_dim_cpu,
+        observation_dim_memory,
+        action_dim_cpu,
+        action_dim_memory,
+        hidden_dims_cpu=[64, 32],
+        hidden_dims_memory=[64, 32],
         learning_rate=0.001,
         discount_factor=1,
         ppo_clip=0.2,
         ppo_steps=5
     ):
-        self.observation_dim = observation_dim
-        self.action_dim = action_dim
-        self.hidden_dims = hidden_dims
+        self.observation_dim_cpu = observation_dim_cpu
+        self.observation_dim_memory = observation_dim_memory
+        self.action_dim_cpu = action_dim_cpu
+        self.action_dim_memory = action_dim_memory
+        self.hidden_dims_cpu = hidden_dims_cpu
+        self.hidden_dims_memory = hidden_dims_memory
         self.learning_rate = learning_rate
         self.gamma = discount_factor
 
         self.ppo_clip = ppo_clip
         self.ppo_steps = ppo_steps
 
-        self.observations = []
-        self.actions = []
-        self.rewards = []
-        self.values = []
-        self.log_probs = []
+        self.observation_list_cpu = []
+        self.observation_list_memory = []
+        self.action_list_cpu = []
+        self.action_list_memory = []
+        self.value_list_cpu = []
+        self.value_list_memory = []
+        self.log_prob_list_cpu = []
+        self.log_prob_list_memory = []
+        self.reward_list = []
         
         self.model = self.build_model()
 
         self.loss = nn.CrossEntropyLoss()
-        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr= self.learning_rate)
+        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.learning_rate)
 
     def build_model(self):
-        actor = PGNet(
-            observation_dim=self.observation_dim,
-            hidden_dims=self.hidden_dims,
-            action_dim=self.action_dim,
+        actor_cpu = PGNet(
+            observation_dim=self.observation_dim_cpu,
+            hidden_dims=self.hidden_dims_cpu,
+            action_dim=self.action_dim_cpu,
         )
-
-        critic = PGNet(
-            observation_dim=self.observation_dim,
-            hidden_dims=self.hidden_dims,
+        actor_memory = PGNet(
+            observation_dim=self.observation_dim_memory,
+            hidden_dims=self.hidden_dims_memory,
+            action_dim=self.action_dim_memory,
+        )
+        critic_cpu = PGNet(
+            observation_dim=self.observation_dim_cpu,
+            hidden_dims=self.hidden_dims_cpu,
+            action_dim=1,
+        )
+        critic_memory = PGNet(
+            observation_dim=self.observation_dim_memory,
+            hidden_dims=self.hidden_dims_memory,
             action_dim=1,
         )
 
-        ac_model = ActorCritic(actor, critic)
+        ac_model = ActorCritic(
+            actor_cpu=actor_cpu, 
+            actor_memory=actor_memory, 
+            critic_cpu=critic_cpu,
+            critic_memory=critic_memory
+        )
 
         return ac_model
 
-    def choose_action(self, observation):
+    def choose_action(self, observation_cpu, observation_memory):
         self.model.eval()
         
-        action_pred, value_pred = self.model(torch.Tensor(observation[np.newaxis, :]))
-        action_prob = F.softmax(action_pred, dim=-1)
-        dist = Categorical(action_prob)
-        
-        action = dist.sample()
-        log_prob = dist.log_prob(action)
+        observation_cpu = torch.Tensor(observation_cpu[np.newaxis, :])
+        observation_memory = torch.Tensor(observation_memory[np.newaxis, :])
+        action_pred_cpu, action_pred_memory, value_pred_cpu, value_pred_memory = self.model(
+            observation_cpu=observation_cpu, 
+            observation_memory=observation_memory
+        )
+
+        action_prob_cpu = F.softmax(action_pred_cpu, dim=-1)
+        action_prob_memory = F.softmax(action_pred_memory, dim=-1)
+        dist_cpu = Categorical(action_prob_cpu)
+        dist_memory = Categorical(action_prob_memory)
+        action_cpu = dist_cpu.sample()
+        action_memory = dist_memory.sample()
+        log_prob_cpu = dist_cpu.log_prob(action_cpu)
+        log_prob_memory = dist_memory.log_prob(action_memory)
             
-        return action, value_pred, log_prob
+        return action_cpu, action_memory, value_pred_cpu, value_pred_memory, log_prob_cpu, log_prob_memory
 
-    def record_trajectory(self, observation, action, value, reward, log_prob):
-        self.observations.append(torch.Tensor(observation[np.newaxis, :]))
-        self.actions.append(action)
-        self.values.append(value)
-        self.rewards.append(reward)
-        self.log_probs.append(log_prob)
+    def record_trajectory(
+        self, 
+        observation_cpu, 
+        observation_memory, 
+        action_cpu, 
+        action_memory, 
+        value_cpu, 
+        value_memory, 
+        log_prob_cpu,
+        log_prob_memory,
+        reward
+    ):
+        self.observation_list_cpu.append(torch.Tensor(observation_cpu[np.newaxis, :]))
+        self.observation_list_memory.append(torch.Tensor(observation_memory[np.newaxis, :]))
+        self.action_list_cpu.append(action_cpu)
+        self.action_list_memory.append(action_memory)
+        self.value_list_cpu.append(value_cpu)
+        self.value_list_memory.append(value_memory)
+        self.log_prob_list_cpu.append(log_prob_cpu)
+        self.log_prob_list_memory.append(log_prob_memory)
+        self.reward_list.append(reward)
 
-    def propagate(self):
+    def learn(self):
         self.model.train()
         
-        rewards = self.discount_rewards()
-        observations = torch.cat(self.observations, dim=0)
-        actions = torch.cat(self.actions, dim=0)
-        values = torch.cat(self.values).squeeze(-1)
-        log_probs = torch.cat(self.log_probs, dim=0)
+        # Discount rewards
+        reward_list = self.discount_rewards()
 
-        advantage = rewards - values
-        
-        rewards = rewards.detach()
-        observations = observations.detach()
-        actions = actions.detach()
-        log_prob = log_probs.detach()
+        # Concatenate trajectory
+        observation_list_cpu = torch.cat(self.observation_list_cpu, dim=0)
+        observation_list_memory = torch.cat(self.observation_list_memory, dim=0)
+        action_list_cpu = torch.cat(self.action_list_cpu, dim=0)
+        action_list_memory = torch.cat(self.action_list_memory, dim=0)
+        value_list_cpu = torch.cat(self.value_list_cpu).squeeze(-1)
+        value_list_memory = torch.cat(self.value_list_memory).squeeze(-1)
+        log_prob_list_cpu = torch.cat(self.log_prob_list_cpu, dim=0)
+        log_prob_list_memory = torch.cat(self.log_prob_list_memory, dim=0)
+
+        # Calculate advantage
+        advantage = reward_list - (value_list_cpu + value_list_memory)
+
+        # Detach trajectory 
+        observation_list_cpu = observation_list_cpu.detach()
+        observation_list_memory = observation_list_memory.detach()
+        action_list_cpu = action_list_cpu.detach()
+        action_list_memory = action_list_memory.detach()
+        log_prob_list_cpu = log_prob_list_cpu.detach()
+        log_prob_list_memory = log_prob_list_memory.detach()
         advantage = advantage.detach()
+        reward_list = reward_list.detach()
         
         loss = 0
         for _ in range(self.ppo_steps):
-            # Get new log prob of actions for all input states
-            action_pred, value_pred = self.model(observations)
-            value_pred = value_pred.squeeze(-1)
-            action_prob = F.softmax(action_pred, dim=-1)
-            dist = Categorical(action_prob)
+            # Get new log probs of actions for all input states
+            action_pred_cpu, action_pred_memory, value_pred_cpu, value_pred_memory = self.model(
+                observation_cpu=observation_list_cpu, 
+                observation_memory=observation_list_memory
+            )
+            value_pred_cpu = value_pred_cpu.squeeze(-1)
+            value_pred_memory = value_pred_memory.squeeze(-1)
+            action_prob_cpu = F.softmax(action_pred_cpu, dim=-1)
+            action_prob_memory = F.softmax(action_pred_memory, dim=-1)
+            dist_cpu = Categorical(action_prob_cpu)
+            dist_memory = Categorical(action_prob_memory)
 
-            # New log prob using old actions
-            new_log_prob = dist.log_prob(actions)
+            # New log probs using old actions
+            new_log_prob_cpu = dist_cpu.log_prob(action_list_cpu)
+            new_log_prob_memory = dist_memory.log_prob(action_list_memory)
 
-            policy_ratio = (new_log_prob - log_prob).exp()
+            policy_ratio = (new_log_prob_cpu * new_log_prob_memory - log_prob_list_cpu * log_prob_list_memory).exp()
             policy_loss_1 = policy_ratio * advantage
             policy_loss_2 = torch.clamp(
                 policy_ratio, 
@@ -168,7 +241,7 @@ class PPO2Agent():
             ) * advantage
 
             policy_loss = - torch.min(policy_loss_1, policy_loss_2).mean()
-            value_loss = F.smooth_l1_loss(rewards, value_pred).mean()
+            value_loss = F.smooth_l1_loss(reward_list, value_pred_cpu + value_pred_memory).mean()
             loss = loss + policy_loss.item() + value_loss.item()
 
             self.optimizer.zero_grad()
@@ -188,7 +261,7 @@ class PPO2Agent():
     def discount_rewards(self):
         discounted_rewards = []
         tmp = 0
-        for reward in self.rewards[::-1]:
+        for reward in self.reward_list[::-1]:
             tmp = tmp * self.gamma + reward
             discounted_rewards.append(tmp)
         
@@ -198,11 +271,15 @@ class PPO2Agent():
         return discounted_rewards
     
     def reset(self):
-        self.observations = []
-        self.actions = []
-        self.values = []
-        self.rewards = []
-        self.log_probs = []
+        self.observation_list_cpu = []
+        self.observation_list_memory = []
+        self.action_list_cpu = []
+        self.action_list_memory = []
+        self.value_list_cpu = []
+        self.value_list_memory = []
+        self.log_prob_list_cpu = []
+        self.log_prob_list_memory = []
+        self.reward_list = []
 
     def save(self, save_path):
         torch.save(self.model.state_dict(), save_path)

@@ -361,6 +361,44 @@ class RequestRecord():
         timeout_size_per_function = len(self.timeout_request_record_per_function[function_id])
         return timeout_size_per_function
 
+    def get_avg_cpu_per_function(self, function_id):
+        request_num = 0
+        total_cpu = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_cpu = total_cpu + request.get_cpu()
+
+        for request in self.timeout_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_cpu = total_cpu + request.get_cpu()
+
+        if request_num == 0:
+            avg_cpu_per_function = 0
+        else:
+            avg_cpu_per_function = total_cpu / request_num
+
+        return avg_cpu_per_function
+
+    def get_avg_memory_per_function(self, function_id):
+        request_num = 0
+        total_memory = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_memory = total_memory + request.get_memory()
+
+        for request in self.timeout_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_memory = total_memory + request.get_memory()
+
+        if request_num == 0:
+            avg_memory_per_function = 0
+        else:
+            avg_memory_per_function = total_memory / request_num
+
+        return avg_memory_per_function
+
     def get_avg_completion_time_per_function(self, function_id):
         request_num = 0
         total_completion_time = 0

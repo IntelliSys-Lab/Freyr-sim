@@ -18,8 +18,9 @@ def lambda_rm_train(
     timetable,
     env_params,
     logger_wrapper,
-    max_episode=500,
-    hidden_dims=[32, 16, 8],
+    max_episode=1000,
+    hidden_dims_cpu=[64, 32],
+    hidden_dims_memory=[64, 32],
     learning_rate=0.001,
     discount_factor=1,
     ppo_clip=0.2,
@@ -40,9 +41,12 @@ def lambda_rm_train(
     
     # Set up policy gradient agent
     pg_agent = PPO2Agent(
-        observation_dim=env.observation_space.shape[0],
-        action_dim=env.action_space.n,
-        hidden_dims=hidden_dims,
+        observation_dim_cpu=env.observation_dim_cpu,
+        observation_dim_memory=env.observation_dim_memory,
+        action_dim_cpu=env.action_dim_cpu,
+        action_dim_memory=env.action_dim_memory,
+        hidden_dims_cpu=hidden_dims_cpu,
+        hidden_dims_memory=hidden_dims_memory,
         learning_rate=learning_rate,
         discount_factor=discount_factor,
         ppo_clip=ppo_clip,
@@ -63,7 +67,7 @@ def lambda_rm_train(
     
     # Start random provision
     for episode in range(max_episode):
-        observation = env.reset()
+        env.reset()
         pg_agent.reset()
 
         actual_time = 0
@@ -72,89 +76,128 @@ def lambda_rm_train(
 
         function_throughput_list = []
         
-        while True:
+        episode_done = False
+        while episode_done is False:
             actual_time = actual_time + 1
-            action, value_pred, log_prob = pg_agent.choose_action(observation)
-            next_observation, reward, done, info = env.step(action)
 
-            pg_agent.record_trajectory(
-                observation=observation, 
-                action=action, 
-                reward=reward,
-                value=value_pred,
-                log_prob=log_prob
-            )
+            timestep = timetable.get_timestep(system_time)
+            if timestep is not None:
+                for index, function_id in enumerate(timestep.keys()):
+                    observation_cpu, observation_memory = env.get_observation(function_id)
+
+                    if index == len(timestep) - 1:
+                        time_proceed = True
+                    else:
+                        time_proceed = False
+
+                    action_cpu, action_memory, value_pred_cpu, value_pred_memory, log_prob_cpu, log_prob_memory = pg_agent.choose_action(
+                        observation_cpu=observation_cpu, 
+                        observation_memory=observation_memory
+                    )
+
+                    reward, done, info = env.step(
+                        time_proceed=time_proceed,
+                        function_id=function_id,
+                        action_cpu=action_cpu,
+                        action_memory=action_memory
+                    )
+
+                    pg_agent.record_trajectory(
+                        observation_cpu=observation_cpu, 
+                        observation_memory=observation_memory, 
+                        action_cpu=action_cpu, 
+                        action_memory=action_memory, 
+                        value_cpu=value_pred_cpu, 
+                        value_memory=value_pred_memory, 
+                        log_prob_cpu=log_prob_cpu,
+                        log_prob_memory=log_prob_memory,
+                        reward=reward
+                    )
             
-            if system_time < info["system_time"]:
-                system_time = info["system_time"]
-                function_throughput_list.append(info["function_throughput"])
-                
-            logger.debug("")
-            logger.debug("Actual timestep {}".format(actual_time))
-            logger.debug("System timestep {}".format(system_time))
-            logger.debug("Take action: {}".format(action))
-            logger.debug("Observation: {}".format(observation))
-            logger.debug("Reward: {}".format(reward))
+                    if system_time < info["system_time"]:
+                        system_time = info["system_time"]
+                        function_throughput_list.append(info["function_throughput"])
+                        
+                    logger.debug("")
+                    logger.debug("Actual timestep {}".format(actual_time))
+                    logger.debug("System timestep {}".format(system_time))
+                    logger.debug("Observation cpu: {}".format(observation_cpu))
+                    logger.debug("Observation memory: {}".format(observation_memory))
+                    logger.debug("Take action cpu: {}".format(action_cpu))
+                    logger.debug("Take action memory: {}".format(action_memory))
+                    logger.debug("Reward: {}".format(reward))
+                    
+                    reward_sum = reward_sum + reward
+            else:
+                time_proceed = True
+                function_id = None
+                action_cpu = None
+                action_memory = None
+
+                reward, done, info = env.step(
+                    time_proceed=time_proceed,
+                    function_id=function_id,
+                    action_cpu=action_cpu,
+                    action_memory=action_memory
+                )
+
+                reward_sum = reward_sum + reward
             
-            reward_sum = reward_sum + reward
-            
-            if done:
-                loss = pg_agent.propagate()
-                avg_completion_time = info["avg_completion_time"]
-                timeout_num = info["timeout_num"]
+                if done:
+                    loss = pg_agent.learn()
+                    avg_completion_time = info["avg_completion_time"]
+                    timeout_num = info["timeout_num"]
 
-                # Save the best model
-                if max_reward_sum < reward_sum:
-                    max_reward_sum = reward_sum
-                    pg_agent.save(model_save_path)
-                
-                logger.info("")
-                logger.info("**********")
-                logger.info("**********")
-                logger.info("**********")
-                logger.info("")
-                logger.info("Episode {} finished after:".format(episode))
-                logger.info("{} actual timesteps".format(actual_time))
-                logger.info("{} system timesteps".format(system_time))
-                logger.info("Total reward: {}".format(reward_sum))
-                logger.info("Avg completion time: {}".format(avg_completion_time))
-                logger.info("Timeout num: {}".format(timeout_num))
-                logger.info("Loss: {}".format(loss))
-                
-                reward_trend.append(reward_sum)
-                avg_completion_time_trend.append(avg_completion_time)
-                timeout_num_trend.append(timeout_num)
-                loss_trend.append(loss)
+                    # Save the best model
+                    if max_reward_sum < reward_sum:
+                        max_reward_sum = reward_sum
+                        pg_agent.save(model_save_path)
+                    
+                    logger.info("")
+                    logger.info("**********")
+                    logger.info("**********")
+                    logger.info("**********")
+                    logger.info("")
+                    logger.info("Episode {} finished after:".format(episode))
+                    logger.info("{} actual timesteps".format(actual_time))
+                    logger.info("{} system timesteps".format(system_time))
+                    logger.info("Total reward: {}".format(reward_sum))
+                    logger.info("Avg completion time: {}".format(avg_completion_time))
+                    logger.info("Timeout num: {}".format(timeout_num))
+                    logger.info("Loss: {}".format(loss))
+                    
+                    reward_trend.append(reward_sum)
+                    avg_completion_time_trend.append(avg_completion_time)
+                    timeout_num_trend.append(timeout_num)
+                    loss_trend.append(loss)
 
-                # # Log average completion time per function
-                # request_record = info["request_record"]
-                # for function_id in avg_completion_time_per_function_trend.keys():
-                #     avg_completion_time_per_function_trend[function_id].append(
-                #         request_record.get_avg_completion_time_per_function(function_id)
-                #     )
+                    # # Log average completion time per function
+                    # request_record = info["request_record"]
+                    # for function_id in avg_completion_time_per_function_trend.keys():
+                    #     avg_completion_time_per_function_trend[function_id].append(
+                    #         request_record.get_avg_completion_time_per_function(function_id)
+                    #     )
 
-                # # Log resource utilization 
-                # resource_utils_record = info["resource_utils_record"]
-                # log_resource_utils(
-                #     logger_wrapper=logger_wrapper,
-                #     rm_name=rm, 
-                #     overwrite=False, 
-                #     episode=episode, 
-                #     resource_utils_record=resource_utils_record
-                # )
+                    # # Log resource utilization 
+                    # resource_utils_record = info["resource_utils_record"]
+                    # log_resource_utils(
+                    #     logger_wrapper=logger_wrapper,
+                    #     rm_name=rm, 
+                    #     overwrite=False, 
+                    #     episode=episode, 
+                    #     resource_utils_record=resource_utils_record
+                    # )
 
-                # # Log function throughput
-                # log_function_throughput(
-                #     logger_wrapper=logger_wrapper,
-                #     rm_name=rm, 
-                #     overwrite=False, 
-                #     episode=episode, 
-                #     function_throughput_list=function_throughput_list
-                # )
-                
-                break
-            
-            observation = next_observation
+                    # # Log function throughput
+                    # log_function_throughput(
+                    #     logger_wrapper=logger_wrapper,
+                    #     rm_name=rm, 
+                    #     overwrite=False, 
+                    #     episode=episode, 
+                    #     function_throughput_list=function_throughput_list
+                    # )
+                    
+                    episode_done = True
     
     # Plot each episode 
     plotter = Plotter()
@@ -194,7 +237,8 @@ def lambda_rm_eval(
     env_params,
     logger_wrapper,
     max_episode=10,
-    hidden_dims=[32, 16, 8],
+    hidden_dims_cpu=[64, 32],
+    hidden_dims_memory=[64, 32],
     learning_rate=0.001,
     discount_factor=1,
     ppo_clip=0.2,
@@ -215,9 +259,12 @@ def lambda_rm_eval(
     
     # Set up policy gradient agent
     pg_agent = PPO2Agent(
-        observation_dim=env.observation_space.shape[0],
-        action_dim=env.action_space.n,
-        hidden_dims=hidden_dims,
+        observation_dim_cpu=env.observation_dim_cpu,
+        observation_dim_memory=env.observation_dim_memory,
+        action_dim_cpu=env.action_dim_cpu,
+        action_dim_memory=env.action_dim_memory,
+        hidden_dims_cpu=hidden_dims_cpu,
+        hidden_dims_memory=hidden_dims_memory,
         learning_rate=learning_rate,
         discount_factor=discount_factor,
         ppo_clip=ppo_clip,
@@ -238,7 +285,7 @@ def lambda_rm_eval(
     
     # Start random provision
     for episode in range(max_episode):
-        observation = env.reset()
+        env.reset()
         pg_agent.reset()
 
         actual_time = 0
@@ -247,73 +294,108 @@ def lambda_rm_eval(
 
         function_throughput_list = []
         
-        while True:
+        episode_done = False
+        while episode_done is False:
             actual_time = actual_time + 1
-            action, value_pred, log_prob = pg_agent.choose_action(observation)
-            next_observation, reward, done, info = env.step(action)
 
-            if system_time < info["system_time"]:
-                system_time = info["system_time"]
-                function_throughput_list.append(info["function_throughput"])
-                
-            logger.debug("")
-            logger.debug("Actual timestep {}".format(actual_time))
-            logger.debug("System timestep {}".format(system_time))
-            logger.debug("Take action: {}".format(action))
-            logger.debug("Observation: {}".format(observation))
-            logger.debug("Reward: {}".format(reward))
-            
-            reward_sum = reward_sum + reward
-            
-            if done:
-                avg_completion_time = info["avg_completion_time"]
-                timeout_num = info["timeout_num"]
-                
-                logger.info("")
-                logger.info("**********")
-                logger.info("**********")
-                logger.info("**********")
-                logger.info("")
-                logger.info("Episode {} finished after:".format(episode))
-                logger.info("{} actual timesteps".format(actual_time))
-                logger.info("{} system timesteps".format(system_time))
-                logger.info("Total reward: {}".format(reward_sum))
-                logger.info("Avg completion time: {}".format(avg_completion_time))
-                logger.info("Timeout num: {}".format(timeout_num))
-                
-                reward_trend.append(reward_sum)
-                avg_completion_time_trend.append(avg_completion_time)
-                timeout_num_trend.append(timeout_num)
+            timestep = timetable.get_timestep(system_time)
+            if timestep is not None:
+                for index, function_id in enumerate(timestep.keys()):
+                    observation_cpu, observation_memory = env.get_observation(function_id)
 
-                # Log average completion time per function
-                request_record = info["request_record"]
-                for function_id in avg_completion_time_per_function_trend.keys():
-                    avg_completion_time_per_function_trend[function_id].append(
-                        request_record.get_avg_completion_time_per_function(function_id)
+                    if index == len(timestep) - 1:
+                        time_proceed = True
+                    else:
+                        time_proceed = False
+
+                    action_cpu, action_memory, value_pred_cpu, value_pred_memory, log_prob_cpu, log_prob_memory = pg_agent.choose_action(
+                        observation_cpu=observation_cpu, 
+                        observation_memory=observation_memory
                     )
 
-                # Log resource utilization 
-                resource_utils_record = info["resource_utils_record"]
-                log_resource_utils(
-                    logger_wrapper=logger_wrapper,
-                    rm_name=rm, 
-                    overwrite=False, 
-                    episode=episode, 
-                    resource_utils_record=resource_utils_record
+                    reward, done, info = env.step(
+                        time_proceed=time_proceed,
+                        function_id=function_id,
+                        action_cpu=action_cpu,
+                        action_memory=action_memory
+                    )
+
+                    if system_time < info["system_time"]:
+                        system_time = info["system_time"]
+                        function_throughput_list.append(info["function_throughput"])
+
+                    logger.debug("")
+                    logger.debug("Actual timestep {}".format(actual_time))
+                    logger.debug("System timestep {}".format(system_time))
+                    logger.debug("Observation cpu: {}".format(observation_cpu))
+                    logger.debug("Observation memory: {}".format(observation_memory))
+                    logger.debug("Take action cpu: {}".format(action_cpu))
+                    logger.debug("Take action memory: {}".format(action_memory))
+                    logger.debug("Reward: {}".format(reward))
+                
+                    reward_sum = reward_sum + reward
+            else:
+                time_proceed = True
+                function_id = None
+                action_cpu = None
+                action_memory = None
+
+                reward, done, info = env.step(
+                    time_proceed=time_proceed,
+                    function_id=function_id,
+                    action_cpu=action_cpu,
+                    action_memory=action_memory
                 )
 
-                # Log function throughput
-                log_function_throughput(
-                    logger_wrapper=logger_wrapper,
-                    rm_name=rm, 
-                    overwrite=False, 
-                    episode=episode, 
-                    function_throughput_list=function_throughput_list
-                )
-                
-                break
-            
-            observation = next_observation
+                reward_sum = reward_sum + reward
+
+                if done:
+                    avg_completion_time = info["avg_completion_time"]
+                    timeout_num = info["timeout_num"]
+                    
+                    logger.info("")
+                    logger.info("**********")
+                    logger.info("**********")
+                    logger.info("**********")
+                    logger.info("")
+                    logger.info("Episode {} finished after:".format(episode))
+                    logger.info("{} actual timesteps".format(actual_time))
+                    logger.info("{} system timesteps".format(system_time))
+                    logger.info("Total reward: {}".format(reward_sum))
+                    logger.info("Avg completion time: {}".format(avg_completion_time))
+                    logger.info("Timeout num: {}".format(timeout_num))
+                    
+                    reward_trend.append(reward_sum)
+                    avg_completion_time_trend.append(avg_completion_time)
+                    timeout_num_trend.append(timeout_num)
+
+                    # Log average completion time per function
+                    request_record = info["request_record"]
+                    for function_id in avg_completion_time_per_function_trend.keys():
+                        avg_completion_time_per_function_trend[function_id].append(
+                            request_record.get_avg_completion_time_per_function(function_id)
+                        )
+
+                    # Log resource utilization 
+                    resource_utils_record = info["resource_utils_record"]
+                    log_resource_utils(
+                        logger_wrapper=logger_wrapper,
+                        rm_name=rm, 
+                        overwrite=False, 
+                        episode=episode, 
+                        resource_utils_record=resource_utils_record
+                    )
+
+                    # Log function throughput
+                    log_function_throughput(
+                        logger_wrapper=logger_wrapper,
+                        rm_name=rm, 
+                        overwrite=False, 
+                        episode=episode, 
+                        function_throughput_list=function_throughput_list
+                    )
+                    
+                    episode_done = True
     
     # Plot each episode 
     plotter = Plotter()
