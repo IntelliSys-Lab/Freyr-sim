@@ -54,16 +54,16 @@ def launch():
         interval=1,
     )
     
-    # # Start simulations
-    # fixed_rm(
-    #     profile=profile,
-    #     timetable=timetable,
-    #     env_params=env_params,
-    #     max_episode=10,
-    #     save_plot=True,
-    #     show_plot=False,
-    #     logger_wrapper=logger_wrapper
-    # )
+    # Start simulations
+    fixed_rm(
+        profile=profile,
+        timetable=timetable,
+        env_params=env_params,
+        max_episode=10,
+        save_plot=True,
+        show_plot=False,
+        logger_wrapper=logger_wrapper
+    )
 
     # greedy_provision(
     #     profile=profile,
@@ -75,31 +75,29 @@ def launch():
     #     logger_wrapper=logger_wrapper
     # )
 
-    # lambda_rm_train(
-    #     profile=profile,
-    #     timetable=timetable,
-    #     env_params=env_params,
-    #     max_episode=500,
-    #     hidden_dims_cpu=[64, 32],
-    #     hidden_dims_memory=[64, 32],
-    #     learning_rate=0.002,
-    #     discount_factor=1,
-    #     ppo_clip=0.2,
-    #     ppo_steps=5,
-    #     model_save_path="ckpt/best_model.pth",
-    #     save_plot=True,
-    #     show_plot=False,
-    #     logger_wrapper=logger_wrapper
-    # )
+    lambda_rm_train(
+        profile=profile,
+        timetable=timetable,
+        env_params=env_params,
+        max_episode=1000,
+        hidden_dim=32,
+        learning_rate=0.001,
+        discount_factor=1,
+        ppo_clip=0.2,
+        ppo_steps=5,
+        model_save_path="ckpt/best_model.pth",
+        save_plot=True,
+        show_plot=False,
+        logger_wrapper=logger_wrapper
+    )
 
     lambda_rm_eval(
         profile=profile,
         timetable=timetable,
         env_params=env_params,
         max_episode=10,
-        hidden_dims_cpu=[64, 32],
-        hidden_dims_memory=[64, 32],
-        learning_rate=0.002,
+        hidden_dim=32,
+        learning_rate=0.001,
         discount_factor=1,
         ppo_clip=0.2,
         ppo_steps=5,
