@@ -1,6 +1,7 @@
 import gym
 from gym import spaces, logger
 import numpy as np
+import torch
 from gym.envs.serverless.faas_utils import Request, Cluster, RequestRecord, ResourceUtilsRecord
         
         
@@ -36,12 +37,11 @@ class FaaSEnv(gym.Env):
         self.resource_utils_record = ResourceUtilsRecord(self.cluster.get_cluster_size())
         
         # Define action space size
-        self.action_dim_cpu = self.params.user_cpu_per_server
-        self.action_dim_memory = self.params.user_memory_per_server
+        self.action_dim = self.params.user_cpu_per_server * self.params.user_memory_per_server
         
         # Define observation space size
         #
-        # State for cpu: 1 + n + 4
+        # State size: 1 + 2 * n + 6
         # [
         #  num_in_fight_requests, 
         #  server_1_available_cpu, 
@@ -49,45 +49,51 @@ class FaaSEnv(gym.Env):
         #  .
         #  .
         #  server_n_available_cpu, 
-        #  next_function_avg_cpu,
         #  next_function_avg_interval,
         #  next_function_avg_completion_time,
         #  next_function_is_cold_start,
+        #  next_function_cpu,
+        #  next_function_memory,
+        #  next_function_invoke_num,
         # ]
-        #
-        # State for memory: 1 + n + 4
-        # [
-        #  num_in_fight_requests, 
-        #  server_1_available_memory,
-        #  .
-        #  .
-        #  .
-        #  server_n_available_memory,
-        #  next_function_avg_memory,
-        #  next_function_avg_interval,
-        #  next_function_avg_completion_time,
-        #  next_function_is_cold_start,
-        # ]
-        self.observation_dim_cpu = 1 + self.cluster.get_cluster_size() + 4
-        self.observation_dim_memory = 1 + self.cluster.get_cluster_size() + 4
-    
+        self.observation_dim = 1 + 2 * self.cluster.get_cluster_size() + 6
+
+    #
+    # Decode action to map
+    #
+    def decode_action(self, action):
+        action_map = {}
+        if action is not None:
+            function_profile = self.profile.get_function_profile()
+            function_profile_list = list(function_profile.keys())
+
+            for i, act in enumerate(action):
+                new_cpu = act / 8 + 1
+                new_memory = act % 8 + 1
+
+                function_id = function_profile_list[i]
+                action_map[function_id] = {}
+                action_map[function_id]["new_cpu"] = new_cpu
+                action_map[function_id]["new_memory"] = new_memory
+
+        return action_map
+
     #
     # Update settings of function profile based on given action map
     #
-    def update_function_profile(
-        self, 
-        function_id, 
-        action_cpu,
-        action_memory
-    ):
+    def update_function_profile(self, action_map):
         function_profile = self.profile.get_function_profile()
-        function = function_profile[function_id]
-        function.set_function(cpu=action_cpu, memory=action_memory)
+
+        for function_id in action_map.keys():
+            function = function_profile[function_id]
+            new_cpu = action_map[function_id]["new_cpu"]
+            new_memory = action_map[function_id]["new_memory"]
+            function.set_function(cpu=new_cpu, memory=new_memory)
         
     #            
     # Update the cluster
     #
-    def update_cluster(self, function_id):
+    def update_cluster(self):
         function_profile = self.profile.get_function_profile()
 
         # Try to import timetable if not finished
@@ -95,14 +101,15 @@ class FaaSEnv(gym.Env):
         request_to_schedule_list = []
 
         if timestep is not None:
-            function = function_profile[function_id]
-            invoke_num = timestep[function_id]
-            for _ in range(invoke_num):
-                request = Request(
-                    function=function, 
-                    invoke_time=self.system_time,
-                )
-                request_to_schedule_list.append(request)
+            for function_id in timestep.keys():
+                function = function_profile[function_id]
+                invoke_num = timestep[function_id]
+                for _ in range(invoke_num):
+                    request = Request(
+                        function=function, 
+                        invoke_time=self.system_time,
+                    )
+                    request_to_schedule_list.append(request)
 
         self.request_record.put_requests(request_to_schedule_list)
         self.cluster.schedule(self.system_time, request_to_schedule_list)
@@ -168,45 +175,42 @@ class FaaSEnv(gym.Env):
     #
     # Get observations for next timestep
     #
-    def get_observation(self, function_id):
+    def get_observation(self):
         function_profile = self.profile.get_function_profile()
+        next_timestep = self.timetable.get_timestep(self.system_time)
 
-        num_undone_requests = self.request_record.get_undone_size()
-        observation_num_undone_requests = np.array([num_undone_requests])
+        observation = []
 
-        observation_cluster_cpu = []
-        observation_cluster_memory = []
-        for server in self.cluster.get_server_pool():
-            available_cpu, available_memory = server.resource_manager.get_resources_available()
-            observation_cluster_cpu.append(available_cpu)
-            observation_cluster_memory.append(available_memory)
-        observation_cluster_cpu = np.array(observation_cluster_cpu)
-        observation_cluster_memory = np.array(observation_cluster_memory)
+        for function_id in function_profile.keys():
+            function = function_profile[function_id]
+            observation_i = []
 
-        observation_next_function_cpu = []
-        observation_next_function_memory = []
-        avg_cpu = self.request_record.get_avg_cpu_per_function(function_id)
-        avg_memory = self.request_record.get_avg_memory_per_function(function_id)
-        avg_interval = self.request_record.get_avg_interval_per_function(self.system_time, function_id)
-        avg_completion_time = self.request_record.get_avg_completion_time_per_function(function_id)
-        is_cold_start = self.request_record.get_is_cold_start_per_function(function_id)
+            # Number of undone requests
+            observation_i.append(self.request_record.get_undone_size())
 
-        observation_next_function_cpu.append(avg_cpu)
-        observation_next_function_cpu.append(avg_interval)
-        observation_next_function_cpu.append(avg_completion_time)
-        observation_next_function_cpu.append(is_cold_start)
-        observation_next_function_memory.append(avg_memory)
-        observation_next_function_memory.append(avg_interval)
-        observation_next_function_memory.append(avg_completion_time)
-        observation_next_function_memory.append(is_cold_start)
+            # Available cpu and memory per server
+            for server in self.cluster.get_server_pool():
+                available_cpu, available_memory = server.resource_manager.get_resources_available()
+                observation_i.append(available_cpu)
+                observation_i.append(available_memory)
 
-        observation_next_function_cpu = np.array(observation_next_function_cpu)
-        observation_next_function_memory = np.array(observation_next_function_memory)
+            # Information of the function
+            observation_i.append(self.request_record.get_avg_interval_per_function(self.system_time, function_id))
+            observation_i.append(self.request_record.get_avg_completion_time_per_function(function_id))
+            observation_i.append(self.request_record.get_is_cold_start_per_function(function_id))
+            observation_i.append(function.get_cpu())
+            observation_i.append(function.get_memory())
+            if next_timestep is not None:
+                observation_i.append(next_timestep[function_id])
+            else:
+                observation_i.append(0)
+
+            observation.append(observation_i)
+
+        observation = np.array(observation)
+        observation = torch.Tensor(observation[:, np.newaxis, :])
         
-        observation_cpu = np.hstack((observation_num_undone_requests, observation_cluster_cpu, observation_next_function_cpu))
-        observation_memory = np.hstack((observation_num_undone_requests, observation_cluster_memory, observation_next_function_memory))
-        
-        return observation_cpu, observation_memory
+        return observation
     #
     # Calculate reward for current timestep
     #
@@ -219,9 +223,9 @@ class FaaSEnv(gym.Env):
         # Reward of completion time
         reward = reward + -self.request_record.get_current_completion_time(self.system_time)
 
-        # Discounted by throughput
-        throughput = np.max([self.get_function_throughput(), 1])
-        reward = reward / throughput
+        # # Discounted by throughput
+        # throughput = np.max([self.get_function_throughput(), 1])
+        # reward = reward / throughput
             
         return reward
     
@@ -265,38 +269,29 @@ class FaaSEnv(gym.Env):
         logger.warn("To do")
         pass
     
-    def step(
-        self, 
-        time_proceed,
-        function_id=None,
-        action_cpu=None,
-        action_memory=None
-    ):
+    def step(self, action):
         function_profile = self.profile.get_function_profile()
 
-        if function_id is not None:
-            if action_cpu is not None and action_memory is not None:
-                # Update function profile
-                self.update_function_profile(function_id, action_cpu, action_memory)
+        # Update function profile
+        self.update_function_profile(self.decode_action(action))
 
-            # Update the cluster
-            self.update_cluster(function_id)
+        # Update the cluster
+        self.update_cluster()
 
-        if time_proceed is True:
-            # Time proceeds
-            self.system_time = self.system_time + self.params.interval
+        # Time proceeds
+        self.system_time = self.system_time + self.params.interval
 
-            # Proceed the cluster
-            num_timeout = self.proceed_cluster()
+        # Proceed the cluster
+        num_timeout = self.proceed_cluster()
 
-            # Update resource utilization record
-            self.update_resource_utils()
+        # Update resource utilization record
+        self.update_resource_utils()
 
-            # Calculate reward
-            reward = self.get_reward(num_timeout)
-        else:
-            # During bursts at the same timestep
-            reward = 0
+        # Calculate reward
+        reward = self.get_reward(num_timeout)
+
+        # Get observation for next state
+        observation = self.get_observation()
             
         # Done?
         done = self.get_done()
@@ -304,7 +299,7 @@ class FaaSEnv(gym.Env):
         # Return info
         info = self.get_info()
         
-        return reward, done, info
+        return observation, reward, done, info
     
     def reset(self):
         self.system_time = 0
@@ -312,4 +307,7 @@ class FaaSEnv(gym.Env):
         self.profile.reset()
         self.cluster.reset()
         self.request_record.reset()
-        
+
+        observation = self.get_observation()
+
+        return observation
