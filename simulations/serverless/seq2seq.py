@@ -14,20 +14,17 @@ class Encoder(nn.Module):
         input_size, 
         hidden_size,
         num_layers=1, 
-        dropout=0.2,
     ):
         super().__init__()
 
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        self.dropout = dropout
 
         self.rnn = nn.GRU(
             input_size=self.input_size, 
             hidden_size=self.hidden_size, 
             num_layers=self.num_layers,
-            dropout=self.dropout, 
         )
 
     def forward(self, x, hidden=None):
@@ -77,7 +74,6 @@ class Decoder(nn.Module):
         hidden_size, 
         output_size,
         num_layers=1, 
-        dropout=0.2
     ):
         super().__init__()
 
@@ -85,14 +81,12 @@ class Decoder(nn.Module):
         self.hidden_size = hidden_size
         self.output_size = output_size
         self.num_layers = num_layers
-        self.dropout = dropout
         self.attention = Attention(hidden_size)
         
         self.rnn = nn.GRU(
             input_size=self.input_size + self.hidden_size, 
             hidden_size=self.hidden_size,
             num_layers=self.num_layers, 
-            dropout=self.dropout
         )
         self.out = nn.Linear(hidden_size * 2, output_size)
 
@@ -185,5 +179,5 @@ class Seq2Seq(nn.Module):
             outputs[t] = output
             top1 = output.data.max(1)[1]
             output = top1
-            
+
         return outputs

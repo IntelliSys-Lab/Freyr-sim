@@ -66,14 +66,12 @@ class PPO2Agent():
                 input_size=self.observation_dim,
                 hidden_size=self.hidden_dim,
                 num_layers=1,
-                dropout=0.2,
             ),
             decoder=Decoder(
                 input_size=self.action_dim + 1, # Add <predict>
                 hidden_size=self.hidden_dim,
                 output_size=self.action_dim,
                 num_layers=1,
-                dropout=0.2
             ),
             is_actor=True
         )
@@ -83,14 +81,12 @@ class PPO2Agent():
                 input_size=self.observation_dim,
                 hidden_size=self.hidden_dim,
                 num_layers=1,
-                dropout=0.2,
             ),
             decoder=Decoder(
                 input_size=self.action_dim + 1, # Add <predict>
                 hidden_size=self.hidden_dim,
                 output_size=1,
                 num_layers=1,
-                dropout=0.2
             ),
             is_actor=False
         )
@@ -141,7 +137,7 @@ class PPO2Agent():
         observation_history = torch.cat(self.observation_history, dim=0)
         action_history = torch.cat(self.action_history, dim=0)
         value_history = torch.cat(self.value_history).squeeze()
-        log_prob_history = torch.mean(torch.cat(self.log_prob_history, dim=0), dim=1)
+        log_prob_history = torch.sum(torch.cat(self.log_prob_history, dim=0), dim=1)
         # print("history after cat: ")
         # print("observation_history shape: {}".format(observation_history.shape))
         # print("action_history shape: {}".format(action_history.shape))
@@ -177,7 +173,7 @@ class PPO2Agent():
                 new_value_history.append(value_pred)
 
             # Concatenate new history
-            new_log_prob_history = torch.mean(torch.cat(new_log_prob_history, dim=0), dim=1)
+            new_log_prob_history = torch.sum(torch.cat(new_log_prob_history, dim=0), dim=1)
             new_value_history = torch.cat(new_value_history).squeeze()
 
             policy_ratio = (new_log_prob_history - log_prob_history).exp()
