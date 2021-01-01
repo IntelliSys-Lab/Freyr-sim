@@ -35,7 +35,8 @@ class FunctionParameters():
         self,
         ideal_cpu=8,
         ideal_memory=8,
-        ideal_duration=30,
+        max_duration=1,
+        min_duration=60,
         cpu_cap_per_function=8,
         memory_cap_per_function=8,
         cpu_least_hint=1,
@@ -47,11 +48,13 @@ class FunctionParameters():
         function_id=None,
         hash_value=0,
         cold_start_time=1,
+        k=2,
         sequence=None,
     ):
         self.ideal_cpu = ideal_cpu
         self.ideal_memory = ideal_memory
-        self.ideal_duration = ideal_duration
+        self.max_duration = max_duration
+        self.min_duration = min_duration
         self.cpu_cap_per_function = cpu_cap_per_function
         self.memory_cap_per_function = memory_cap_per_function
         self.cpu_least_hint = cpu_least_hint
@@ -63,6 +66,7 @@ class FunctionParameters():
         self.function_id = function_id
         self.hash_value = hash_value
         self.cold_start_time = cold_start_time
+        self.k = k
         self.sequence = sequence
         
 

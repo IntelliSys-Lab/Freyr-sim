@@ -39,15 +39,29 @@ class Function():
 
         self.hash_value = self.params.hash_value
         self.application_id = self.params.application_id
-        self.resource_adjust_direction = [0, 0] # [cpu, memory]
+
+        self.resource_adjust_direction = {}
+        self.resource_adjust_direction["cpu"] = 0
+        self.resource_adjust_direction["memory"] = 0
     
-    def set_function(self, cpu=1, memory=1):
+    def set_function(self, cpu, memory):
         self.cpu = cpu
         self.memory = memory
         
         # Calculate duration
-        self.duration = self.params.ideal_duration * np.max([self.params.ideal_cpu, self.cpu])/self.cpu * np.max([self.params.ideal_memory, self.memory])/self.memory
-    
+        # Assume CPU has k times more impact on duration than memory
+        cpu_duration = (self.params.max_duration - self.params.min_duration) * self.params.k / (self.params.k + 1)
+        cpu_delay_factor = (self.params.ideal_cpu - np.clip(self.cpu, self.params.cpu_least_hint, self.params.ideal_cpu)) \
+            / np.clip(self.params.ideal_cpu - self.params.cpu_least_hint, 1, self.params.ideal_cpu)
+        cpu_duration_increment = cpu_duration * cpu_delay_factor
+
+        memory_duration = (self.params.max_duration - self.params.min_duration) * 1 / (self.params.k + 1)
+        memory_delay_factor = (self.params.ideal_memory - np.clip(self.memory, self.params.memory_least_hint, self.params.ideal_memory)) \
+            / np.clip(self.params.ideal_memory - self.params.memory_least_hint, 1, self.params.ideal_memory)
+        memory_duration_increment = memory_duration * memory_delay_factor
+
+        self.duration = self.params.min_duration + cpu_duration_increment + memory_duration_increment
+
     def get_function_id(self):
         return self.function_id
 
@@ -77,25 +91,26 @@ class Function():
     def get_memory(self):
         return self.memory
 
+    def get_resource_adjust_direction(self, resource):
+        return self.resource_adjust_direction[resource]
+
     def set_resource_adjust(self, resource, adjust):
         # Adjust resources
         next_cpu = self.cpu
         next_memory = self.memory
         
-        if resource == 0:
-            if adjust == 1:
-                if next_cpu < self.params.cpu_cap_per_function:
-                    next_cpu = next_cpu + 1
-            else:
-                if next_cpu > self.params.cpu_least_hint:
-                    next_cpu = next_cpu - 1
-        else:
-            if adjust == 1:
-                if next_memory < self.params.memory_cap_per_function:
-                    next_memory = next_memory + 1
-            else:
-                if next_memory > self.params.memory_least_hint:
-                    next_memory = next_memory - 1
+        if resource == "cpu":
+            next_cpu = np.clip(
+                next_cpu + adjust, 
+                self.params.cpu_least_hint, 
+                self.params.cpu_cap_per_function
+            )
+        elif resource == "memory":
+            next_memory = np.clip(
+                next_memory + adjust, 
+                self.params.memory_least_hint, 
+                self.params.memory_cap_per_function
+            )
             
         self.set_function(next_cpu, next_memory)
         
@@ -104,31 +119,26 @@ class Function():
             self.resource_adjust_direction[resource] = adjust
 
     def validate_resource_adjust(self, resource, adjust): 
-        if resource == 0:
-            if adjust == 1:
-                if self.cpu == self.params.cpu_cap_per_function: # Implicit invalid action: reach cpu cap
+        # Implicit invalid action
+        if resource == "cpu":
+            if self.cpu + adjust > self.params.cpu_cap_per_function or \
+                self.cpu + adjust < self.params.cpu_least_hint: 
                     return False 
-            else:
-                if self.cpu == self.params.cpu_least_hint: # Implicit invalid action: reach cpu least hint
-                    return False 
-        else:
-            if adjust == 1:
-                if self.memory == self.params.memory_cap_per_function: # Implicit invalid action: reach memory cap
-                    return False 
-            else:
-                if self.memory == self.params.memory_least_hint: # Implicit invalid action: reach memory least hint
-                    return False 
-        
+        elif resource == "memory":
+            if self.memory + adjust > self.params.memory_cap_per_function or \
+                self.memory + adjust < self.params.memory_least_hint: 
+                return False 
+
         if self.resource_adjust_direction[resource] == 0: # Not touched yet
             return True   
-        else:
-            if self.resource_adjust_direction[resource] == adjust: # Correct direction as usual
-                return True
-            else: # Implicit invalid action: wrong direction
-                return False
+        elif self.resource_adjust_direction[resource] == adjust: # Correct direction as usual
+            return True
+        else: # Implicit invalid action: wrong direction
+            return False
             
     def reset_resource_adjust_direction(self):
-        self.resource_adjust_direction = [0, 0]
+        self.resource_adjust_direction["cpu"] = 0
+        self.resource_adjust_direction["memory"] = 0
 
 
 class Request():
@@ -337,11 +347,22 @@ class RequestRecord():
 
         return avg_completion_time
 
-    def get_avg_interval(self, system_time):
-        if system_time == 0:
+    def get_avg_interval(self):
+        total_interval = 0
+        num = 0
+        for i in range(len(self.total_request_record)):
+            if i < len(self.total_request_record) - 1:
+                old_request = self.total_request_record[i]
+                new_request = self.total_request_record[i+1]
+
+                if interval > 0:
+                    total_interval = total_interval + new_request.get_invoke_time() - old_request.get_invoke_time()
+                    num = num + 1
+
+        if num == 0:
             avg_interval = 0
         else:
-            avg_interval = len(self.total_request_record) / system_time
+            avg_interval = total_interval / num
 
         return avg_interval
 
@@ -380,11 +401,23 @@ class RequestRecord():
 
         return avg_completion_time_per_function
 
-    def get_avg_interval_per_function(self, system_time, function_id):
-        if system_time == 0:
+    def get_avg_interval_per_function(self, function_id):
+        total_interval = 0
+        num = 0
+        for i in range(len(self.total_request_record_per_function[function_id])):
+            if i < len(self.total_request_record_per_function[function_id]) - 1:
+                old_request = self.total_request_record_per_function[function_id][i]
+                new_request = self.total_request_record_per_function[function_id][i+1]
+                interval = new_request.get_invoke_time() - old_request.get_invoke_time()
+
+                if interval > 0:
+                    total_interval = total_interval + new_request.get_invoke_time() - old_request.get_invoke_time()
+                    num = num + 1
+
+        if num == 0:
             avg_interval_per_function = 0
         else:
-            avg_interval_per_function = len(self.total_request_record_per_function[function_id]) / system_time
+            avg_interval_per_function = total_interval / num
 
         return avg_interval_per_function
 
@@ -896,6 +929,17 @@ class Cluster():
 
     def get_server_pool(self):
         return self.server_pool
+
+    def get_total_available_resources(self):
+        total_available_cpu = 0
+        total_available_memory = 0
+
+        for server in self.server_pool:
+            available_cpu, available_memory = server.resource_manager.get_resources_available()
+            total_available_cpu = total_available_cpu + available_cpu
+            total_available_memory = available_memory + available_memory
+
+        return total_available_cpu, total_available_memory
 
     def step(self, system_time):
         total_request_list = []
