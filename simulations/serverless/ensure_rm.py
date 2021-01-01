@@ -10,9 +10,9 @@ from utils import Prioritize, log_trends, log_resource_utils, log_function_throu
 
 
 #
-# Naive greedy provision strategy
+# ENSURE provision
 #                 
-def greedy_rm(
+def ensure_rm(
     profile,
     timetable,
     env_params,
@@ -21,7 +21,7 @@ def greedy_rm(
     save_plot=False,
     show_plot=True
 ):
-    rm = "GreedyRM"
+    rm = "EnsureRM"
     function_profile = profile.get_function_profile()
 
     # Set up logger
@@ -48,6 +48,11 @@ def greedy_rm(
         function_throughput_list = []
         
         action = {}
+
+        # ENSURE parameter
+        num_update_threshold_dict = {}
+        for function_id in function_profile.keys():
+            num_update_threshold_dict[function_id] = 0
         
         episode_done = False
         while episode_done is False:
@@ -61,57 +66,91 @@ def greedy_rm(
                 function_dict = info["function_dict"]
 
                 #
-                # Greedy resource adjustment
+                # ENSURE dynamic CPU adjustment
                 #
-
-                function_profile = profile.get_function_profile()
 
                 total_available_cpu = info["total_available_cpu"]
                 total_available_memory = info["total_available_memory"]
 
-                function_queue = queue.PriorityQueue()
-                action_map = {}
-                for function_id in function_dict.keys():
-                    function_stats = function_dict[function_id]
-                    
-                    # Only adjust incoming invocations
-                    if function_stats["invoke_num"] > 0:
-                        action_map[function_id] = {}
-                        action_map[function_id]["cpu"] = function_stats["cpu"]
-                        action_map[function_id]["memory"] = function_stats["memory"]
+                # Paramters
+                window_size = 10
+                latency_threshold = 1.10
 
+                function_queue = queue.PriorityQueue()
+                rebalance_list = []
+                action_map = {}
+
+                for function_id in function_dict.keys():
+                    function = function_profile[function_id]
+                    function_stats = function_dict[function_id]
+                    action_map[function_id] = {}
+                    action_map[function_id]["cpu"] = function_stats["cpu"]
+                    action_map[function_id]["memory"] = function_stats["memory"]
+
+                    # Classify the function
+                    if function_stats["avg_completion_time"] > 5: # MP
+                        function_stats["max_cpu"] = env_params.cpu_cap_per_function
+                        function_stats["num_update_threshold"] = 3
+                        function_stats["cpu_step"] = 0.5
+                    else: # ET
+                        function_stats["max_cpu"] = env_params.cpu_cap_per_function
+                        function_stats["num_update_threshold"] = 5
+                        function_stats["cpu_step"] = 1
+
+                    # Only evaluate incoming invocations
+                    if function_stats["invoke_num"] > 0:
                         priority = function_stats["priority"]
                         function_queue.put(Prioritize(priority, function_id))
+                    else:
+                        # Otherwise add to rebalance list
+                        if num_update_threshold_dict[function_id] >= function_stats["num_update_threshold"]:
+                            rebalance_list.append(function_id)
 
-                while total_available_cpu > 0 and total_available_memory > 0 and function_queue.empty() is False:
+                rebalance = False
+
+                while function_queue.empty() is False:
                     function_id = function_queue.get().item
                     function_stats = function_dict[function_id]
                     function = function_profile[function_id]
                     total_sequence_size = function_stats["total_sequence_size"]
                     invoke_num = function_stats["invoke_num"]
                     
-                    # Allocate full resources to failed functions immediately
-                    if function_stats["is_success"] is False:
-                        action_map[function_id]["cpu"] = env.params.cpu_cap_per_function
-                        action_map[function_id]["memory"] = env.params.memory_cap_per_function
-                    else:
-                        new_cpu = np.clip(
-                            function_stats["cpu"] + 1, 
-                            function.params.cpu_least_hint,
-                            function.params.cpu_cap_per_function
-                        )
-                        new_memory = np.clip(
-                            function_stats["memory"] + 1, 
-                            function.params.memory_least_hint,
-                            function.params.memory_cap_per_function
-                        )
+                    # If reach threshold of updates
+                    current_update = num_update_threshold_dict[function_id]
+                    if current_update >= function_stats["num_update_threshold"]:
+                        # Monitor via a moving window
+                        request_window = request_record.get_total_request_record_per_function(function_id)[-window_size:]
+                        total_completion_time_in_window = 0
+                        for request in request_window:
+                            total_completion_time_in_window = total_completion_time_in_window + request.get_completion_time()
 
-                        if total_available_cpu - new_cpu * invoke_num * total_sequence_size > 0 and \
-                            total_available_memory - new_memory * invoke_num * total_sequence_size > 0:
+                        avg_completion_time_in_window = total_completion_time_in_window / window_size
+
+                        # If performance degrade
+                        if avg_completion_time_in_window / function.params.min_duration >= latency_threshold:
+                            # Increment one step if possible
+                            new_cpu = np.clip(
+                                function_stats["cpu"] + function_stats["cpu_step"], 
+                                function.params.cpu_least_hint,
+                                function_stats["max_cpu"]
+                            )
                             action_map[function_id]["cpu"] = new_cpu
-                            action_map[function_id]["memory"] = new_memory
-                            total_available_cpu = total_available_cpu - new_cpu * invoke_num * total_sequence_size
-                            total_available_memory = total_available_memory - new_memory * invoke_num * total_sequence_size
+
+                            # Otherwise exceed capacity, rebalance from other functions that haven't reached update threshold
+                            if total_available_cpu - new_cpu * invoke_num * total_sequence_size >= 0:
+                                total_available_cpu = total_available_cpu - new_cpu * invoke_num * total_sequence_size
+                            else: 
+                                rebalance = True
+                    
+                        num_update_threshold_dict[function_id] = 0
+                    else:
+                        num_update_threshold_dict[function_id] = current_update + invoke_num
+                
+                # Rebalance if needed
+                if rebalance is True:
+                    for function_id in rebalance_list:
+                        function_stats = function_dict[function_id]
+                        action_map[function_id]["cpu"] = function_stats["cpu"] - function_stats["cpu_step"]
 
                 action = action_map
 

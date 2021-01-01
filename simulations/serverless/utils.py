@@ -1,4 +1,25 @@
 import time
+import functools
+
+
+#
+# Class utilities
+#
+
+@functools.total_ordering
+class Prioritize:
+    """
+    Wrapper for non-comparative objects
+    """
+    def __init__(self, priority, item):
+        self.priority = priority
+        self.item = item
+
+    def __eq__(self, other):
+        return self.priority == other.priority
+
+    def __lt__(self, other):
+        return self.priority < other.priority
 
 #
 # Function utilities

@@ -40,8 +40,8 @@ def lambda_rm_train(
     
     # Set up policy gradient agent
     pg_agent = PPO2Agent(
-        observation_dim=env.observation_space.shape[0],
-        action_dim=env.action_space.n,
+        observation_dim=env.observation_dim,
+        action_dim=env.action_dim,
         hidden_dims=hidden_dims,
         learning_rate=learning_rate,
         discount_factor=discount_factor,
@@ -72,7 +72,8 @@ def lambda_rm_train(
 
         function_throughput_list = []
         
-        while True:
+        episode_done = False
+        while episode_done is False:
             actual_time = actual_time + 1
             action, value_pred, log_prob = pg_agent.choose_action(observation)
             next_observation, reward, done, info = env.step(action)
@@ -215,8 +216,8 @@ def lambda_rm_eval(
     
     # Set up policy gradient agent
     pg_agent = PPO2Agent(
-        observation_dim=env.observation_space.shape[0],
-        action_dim=env.action_space.n,
+        observation_dim=env.observation_dim,
+        action_dim=env.action_dim,
         hidden_dims=hidden_dims,
         learning_rate=learning_rate,
         discount_factor=discount_factor,
@@ -247,7 +248,8 @@ def lambda_rm_eval(
 
         function_throughput_list = []
         
-        while True:
+        episode_done = False
+        while episode_done is False:
             actual_time = actual_time + 1
             action, value_pred, log_prob = pg_agent.choose_action(observation)
             next_observation, reward, done, info = env.step(action)
@@ -311,7 +313,7 @@ def lambda_rm_eval(
                     function_throughput_list=function_throughput_list
                 )
                 
-                break
+                episode_done = True
             
             observation = next_observation
     

@@ -203,8 +203,8 @@ if __name__ == "__main__":
     print("Characterizing memory distribution...")
     dist = characterize_memory_distribution(
         memory_traces,
-        max_memory=1024,
-        interval=128
+        max_memory=1536,
+        interval=192
     )
 
     print("Sampling from distribution...")

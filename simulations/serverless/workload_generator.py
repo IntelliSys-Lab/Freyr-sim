@@ -2,6 +2,7 @@ import sys
 sys.path.append("../../gym")
 import scipy.stats as stats
 import pandas as pd
+import numpy as np
 import gym
 from gym.envs.serverless.faas_utils import Function, Profile, Timetable
 from gym.envs.serverless.faas_params import FunctionParameters, TimetableParameters
@@ -194,24 +195,32 @@ class WorkloadGenerator():
         for function_hash in function_params_dict.keys():
             for _, row in memory_traces.iterrows():
                 if row["HashApp"] == function_params_dict[function_hash]["HashApp"]:
-                    function_params_dict[function_hash]["ideal_memory"] = min(8, max(1, int(1*row["AverageAllocatedMb_pct100"]/256)))
-                    function_params_dict[function_hash]["ideal_cpu"] = min(8, int(1*row["AverageAllocatedMb_pct100"]/256))
+                    function_params_dict[function_hash]["ideal_memory"] = np.clip(int(row["AverageAllocatedMb_pct100"]/192) + 1, 1, 8)
+                    function_params_dict[function_hash]["ideal_cpu"] = np.clip(int(row["AverageAllocatedMb_pct100"]/192) + 1, 1, 8)
                     function_params_dict[function_hash]["memory_least_hint"] = 1
                     function_params_dict[function_hash]["cpu_least_hint"] = 1
-                    function_params_dict[function_hash]["memory_user_defined"] = 4
-                    function_params_dict[function_hash]["cpu_user_defined"] = 4
+                    function_params_dict[function_hash]["memory_user_defined"] = np.clip(int(row["AverageAllocatedMb_pct1"]/192) + 1, 1, 8)
+                    function_params_dict[function_hash]["cpu_user_defined"] = np.clip(int(row["AverageAllocatedMb_pct1"]/192) + 1, 1, 8)
                     function_params_dict[function_hash]["memory_cap_per_function"] = 8
                     function_params_dict[function_hash]["cpu_cap_per_function"] = 8
                     break
 
             for _, row in duration_traces.iterrows():
                 if row["HashFunction"] == function_hash:
-                    function_params_dict[function_hash]["ideal_duration"] = int(row["Average"]/1000) + 1 # Millisec to sec
+                    # Millisec to sec
+                    function_params_dict[function_hash]["max_duration"] = int(row["percentile_Average_100"]/1000) + 1 
+                    function_params_dict[function_hash]["min_duration"] = int(row["percentile_Average_1"]/1000) + 1 
+                    function_params_dict[function_hash]["cold_start_time"] = int(row["Minimum"]/1000) + 1 
 
             for _, row in invocation_traces.iterrows():
                 if row["HashFunction"] == function_hash:
-                    function_params_dict[function_hash]["timeout"] = 60 # Max timeout limit
-        
+                    # Max timeout limit
+                    # Reference: https://docs.microsoft.com/en-us/azure/azure-functions/functions-scale
+                    if row["Trigger"] == "http":
+                        function_params_dict[function_hash]["timeout"] = 230 
+                    else:
+                        function_params_dict[function_hash]["timeout"] = 600
+
         # Create Profile paramters and sequence dictionary
         profile_params = {}
         sequence_dict = {}
@@ -224,7 +233,8 @@ class WorkloadGenerator():
             function_params = FunctionParameters(
                 ideal_cpu=function_params_dict[function_hash]["ideal_cpu"], 
                 ideal_memory=function_params_dict[function_hash]["ideal_memory"],
-                ideal_duration=function_params_dict[function_hash]["ideal_duration"],
+                max_duration=function_params_dict[function_hash]["max_duration"],
+                min_duration=function_params_dict[function_hash]["min_duration"],
                 cpu_least_hint=function_params_dict[function_hash]["cpu_least_hint"],
                 memory_least_hint=function_params_dict[function_hash]["memory_least_hint"],
                 timeout=function_params_dict[function_hash]["timeout"],
@@ -235,7 +245,8 @@ class WorkloadGenerator():
                 application_id=function_params_dict[function_hash]["HashApp"],
                 function_id=function_hash,
                 hash_value=hash_value,
-                cold_start_time=1,
+                cold_start_time=function_params_dict[function_hash]["cold_start_time"],
+                k=2
             )
 
             profile_params[function_params.function_id] = function_params
@@ -390,8 +401,8 @@ class WorkloadGenerator():
             timestep = {}
 
             for _, row in invocation_traces.iterrows():
-                function_id = row["FunctionId"]
-                invoke_num = row["{}".format(i+1)]
+                function_id = row["HashFunction"]
+                invoke_num = row["{}".format(timestep_i+1)]
                 timestep[function_id] = invoke_num
 
             timetable_list.append(timestep)
@@ -424,7 +435,15 @@ class WorkloadGenerator():
         if default == "ensure":
             default_profile_params, default_timetable_params = self.ensure_params()
         elif default == "azure":
-            default_profile_params, default_timetable_params = self.azure_params()
+            default_profile_params, default_timetable_params = self.azure_params(
+                azure_file_path="azurefunctions-dataset2019/",
+                # memory_traces_file="sampled_memory_traces.csv",
+                # duration_traces_file="sampled_duration_traces.csv",
+                # invocation_traces_file="sampled_invocation_traces.csv"
+                memory_traces_file="simple_memory_traces.csv",
+                duration_traces_file="simple_duration_traces.csv",
+                invocation_traces_file="simple_invocation_traces.csv"
+            )
 
         if profile_params is None:
             profile_params = default_profile_params

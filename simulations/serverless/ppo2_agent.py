@@ -3,47 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
 import numpy as np
-
-
-
-class PGNet(nn.Module):
-    def __init__(
-        self, 
-        observation_dim, 
-        hidden_dims,
-        action_dim
-    ):
-        super(PGNet, self).__init__()
-        
-        if isinstance(hidden_dims, int):
-            hidden_dims = [hidden_dims]
-            
-        self.layers = []
-        
-        layer_input = nn.Sequential(
-            nn.Linear(observation_dim, hidden_dims[0]),
-            nn.Tanh()
-        )
-        self.layers.append(layer_input)
-        
-        for i in range(len(hidden_dims)):
-            if i == len(hidden_dims)-1:
-                layer_output = nn.Linear(hidden_dims[i], action_dim)
-                self.layers.append(layer_output)
-            else:
-                layer_hidden = nn.Sequential(
-                    nn.Linear(hidden_dims[i], hidden_dims[i+1]),
-                    nn.Tanh()
-                )
-                self.layers.append(layer_hidden)
-        
-        self.layer_module = nn.ModuleList(self.layers)
-        
-    def forward(self, x):
-        for layer in self.layer_module:
-            x = layer(x)
-
-        return x
+from mlp import MLP
 
 
 class ActorCritic(nn.Module):
@@ -84,28 +44,32 @@ class PPO2Agent():
         self.ppo_clip = ppo_clip
         self.ppo_steps = ppo_steps
 
-        self.observations = []
-        self.actions = []
-        self.rewards = []
-        self.values = []
-        self.log_probs = []
+        self.observation_history = []
+        self.action_history = []
+        self.value_history = []
+        self.log_prob_history = []
+        self.reward_history = []
         
         self.model = self.build_model()
 
         self.loss = nn.CrossEntropyLoss()
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr= self.learning_rate)
 
+        self.eps = np.finfo(np.float32).eps.item()
+
     def build_model(self):
-        actor = PGNet(
+        actor = MLP(
             observation_dim=self.observation_dim,
             hidden_dims=self.hidden_dims,
             action_dim=self.action_dim,
+            is_actor=True
         )
 
-        critic = PGNet(
+        critic = MLP(
             observation_dim=self.observation_dim,
             hidden_dims=self.hidden_dims,
             action_dim=1,
+            is_actor=False
         )
 
         ac_model = ActorCritic(actor, critic)
@@ -124,42 +88,63 @@ class PPO2Agent():
             
         return action, value_pred, log_prob
 
-    def record_trajectory(self, observation, action, value, reward, log_prob):
-        self.observations.append(torch.Tensor(observation[np.newaxis, :]))
-        self.actions.append(action)
-        self.values.append(value)
-        self.rewards.append(reward)
-        self.log_probs.append(log_prob)
+    def record_trajectory(
+        self, 
+        observation, 
+        action, 
+        value, 
+        reward, 
+        log_prob
+    ):
+        self.observation_history.append(observation.unsqueeze(0))
+        self.action_history.append(action.unsqueeze(0))
+        self.value_history.append(value)
+        self.log_prob_history.append(log_prob.unsqueeze(0))
+        self.reward_history.append(reward)
 
     def propagate(self):
         self.model.train()
         
-        rewards = self.discount_rewards()
-        observations = torch.cat(self.observations, dim=0)
-        actions = torch.cat(self.actions, dim=0)
-        values = torch.cat(self.values).squeeze(-1)
-        log_probs = torch.cat(self.log_probs, dim=0)
+        # Discount rewards
+        reward_history = self.discount_rewards()
 
-        advantage = rewards - values
+        # Concatenate trajectory
+        observation_history = torch.cat(self.observation_history, dim=0)
+        action_history = torch.cat(self.action_history, dim=0)
+        value_history = torch.cat(self.value_history).squeeze()
+        log_prob_history = torch.cat(self.log_prob_history, dim=0)
+
+        # Calculate advantage
+        advantage = reward_history - value_history
         
-        rewards = rewards.detach()
-        observations = observations.detach()
-        actions = actions.detach()
-        log_prob = log_probs.detach()
+        # Detach trajectory 
+        observation_history = observation_history.detach()
+        action_history = action_history.detach()
+        log_prob_history = log_prob_history.detach()
         advantage = advantage.detach()
+        reward_history = reward_history.detach()
         
         loss = 0
         for _ in range(self.ppo_steps):
-            # Get new log prob of actions for all input states
-            action_pred, value_pred = self.model(observations)
-            value_pred = value_pred.squeeze(-1)
-            action_prob = F.softmax(action_pred, dim=-1)
-            dist = Categorical(action_prob)
+            # Get new log probs of actions for all input states
+            new_log_prob_history = []
+            new_value_history = []
+            for i in range (observation_history.size(0)):
+                observation_i = observation_history[i, :]
+                action_pred, value_pred = self.model(observation_i)
+                action_prob = F.softmax(action_pred, dim=-1)
+                dist = Categorical(action_prob)
 
-            # New log prob using old actions
-            new_log_prob = dist.log_prob(actions)
+                # New log probs using old actions
+                new_log_prob = dist.log_prob(action_history[i])
 
-            policy_ratio = (new_log_prob - log_prob).exp()
+                new_log_prob_history.append(new_log_prob.unsqueeze(0))
+                new_value_history.append(value_pred)
+
+            new_log_prob_history = torch.cat(new_log_prob_history, dim=0)
+            new_value_history = torch.cat(new_value_history).squeeze()
+
+            policy_ratio = (new_log_prob_history - log_prob_history).exp()
             policy_loss_1 = policy_ratio * advantage
             policy_loss_2 = torch.clamp(
                 policy_ratio, 
@@ -168,7 +153,7 @@ class PPO2Agent():
             ) * advantage
 
             policy_loss = - torch.min(policy_loss_1, policy_loss_2).mean()
-            value_loss = F.smooth_l1_loss(rewards, value_pred).mean()
+            value_loss = F.smooth_l1_loss(reward_history, new_value_history).mean()
             loss = loss + policy_loss.item() + value_loss.item()
 
             self.optimizer.zero_grad()
@@ -180,15 +165,13 @@ class PPO2Agent():
         return loss
     
     def norm(self, x):
-        eps = np.finfo(np.float32).eps.item()
-        x = (x - x.mean()) / (x.std() + eps)
-
+        x = (x - x.mean()) / (x.std() + self.eps)
         return x
 
     def discount_rewards(self):
         discounted_rewards = []
         tmp = 0
-        for reward in self.rewards[::-1]:
+        for reward in self.reward_history[::-1]:
             tmp = tmp * self.gamma + reward
             discounted_rewards.append(tmp)
         
@@ -198,11 +181,11 @@ class PPO2Agent():
         return discounted_rewards
     
     def reset(self):
-        self.observations = []
-        self.actions = []
-        self.values = []
-        self.rewards = []
-        self.log_probs = []
+        self.observation_history = []
+        self.action_history = []
+        self.value_history = []
+        self.log_prob_history = []
+        self.reward_history = []
 
     def save(self, save_path):
         torch.save(self.model.state_dict(), save_path)

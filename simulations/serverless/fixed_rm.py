@@ -46,8 +46,10 @@ def fixed_rm(
 
         function_throughput_list = []
         
-        action = env.action_space.n - 1
-        while True:
+        action = env.action_dim - 1
+
+        episode_done = False
+        while episode_done is False:
             actual_time = actual_time + 1
             next_observation, reward, done, info = env.step(action)
             
@@ -110,7 +112,7 @@ def fixed_rm(
                     function_throughput_list=function_throughput_list
                 )
                 
-                break
+                episode_done = True
             
             observation = next_observation
     
