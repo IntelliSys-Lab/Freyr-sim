@@ -437,12 +437,12 @@ class WorkloadGenerator():
         elif default == "azure":
             default_profile_params, default_timetable_params = self.azure_params(
                 azure_file_path="azurefunctions-dataset2019/",
-                # memory_traces_file="sampled_memory_traces.csv",
-                # duration_traces_file="sampled_duration_traces.csv",
-                # invocation_traces_file="sampled_invocation_traces.csv"
-                memory_traces_file="simple_memory_traces.csv",
-                duration_traces_file="simple_duration_traces.csv",
-                invocation_traces_file="simple_invocation_traces.csv"
+                memory_traces_file="sampled_memory_traces.csv",
+                duration_traces_file="sampled_duration_traces.csv",
+                invocation_traces_file="sampled_invocation_traces.csv"
+                # memory_traces_file="simple_memory_traces.csv",
+                # duration_traces_file="simple_duration_traces.csv",
+                # invocation_traces_file="simple_invocation_traces.csv"
             )
 
         if profile_params is None:

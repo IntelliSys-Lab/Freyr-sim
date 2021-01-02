@@ -44,7 +44,7 @@ def launch():
     
     # Set paramters for FaaSEnv
     env_params = EnvParameters(
-        cluster_size=10,
+        cluster_size=30,
         user_cpu_per_server=8,
         user_memory_per_server=8,
         keep_alive_window_per_server=60,
@@ -85,37 +85,37 @@ def launch():
         logger_wrapper=logger_wrapper
     )
 
-    # lambda_rm_train(
-    #     profile=profile,
-    #     timetable=timetable,
-    #     env_params=env_params,
-    #     max_episode=1000,
-    #     hidden_dims=[32, 16],
-    #     learning_rate=0.001,
-    #     discount_factor=1,
-    #     ppo_clip=0.2,
-    #     ppo_steps=5,
-    #     model_save_path="ckpt/best_model.pth",
-    #     save_plot=True,
-    #     show_plot=False,
-    #     logger_wrapper=logger_wrapper
-    # )
+    lambda_rm_train(
+        profile=profile,
+        timetable=timetable,
+        env_params=env_params,
+        max_episode=1000,
+        hidden_dims=[32, 16],
+        learning_rate=0.001,
+        discount_factor=1,
+        ppo_clip=0.2,
+        ppo_steps=5,
+        model_save_path="ckpt/best_model.pth",
+        save_plot=True,
+        show_plot=False,
+        logger_wrapper=logger_wrapper
+    )
 
-    # lambda_rm_eval(
-    #     profile=profile,
-    #     timetable=timetable,
-    #     env_params=env_params,
-    #     max_episode=10,
-    #     hidden_dims=[32, 16],
-    #     learning_rate=0.001,
-    #     discount_factor=1,
-    #     ppo_clip=0.2,
-    #     ppo_steps=5,
-    #     checkpoint_path="ckpt/best_model.pth",
-    #     save_plot=True,
-    #     show_plot=False,
-    #     logger_wrapper=logger_wrapper
-    # )
+    lambda_rm_eval(
+        profile=profile,
+        timetable=timetable,
+        env_params=env_params,
+        max_episode=10,
+        hidden_dims=[32, 16],
+        learning_rate=0.001,
+        discount_factor=1,
+        ppo_clip=0.2,
+        ppo_steps=5,
+        checkpoint_path="ckpt/best_model.pth",
+        save_plot=True,
+        show_plot=False,
+        logger_wrapper=logger_wrapper
+    )
 
 
 if __name__ == "__main__":
