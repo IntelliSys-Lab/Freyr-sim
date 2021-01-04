@@ -22,7 +22,9 @@ def lambda_rm_train(
     learning_rate=0.001,
     discount_factor=1,
     ppo_clip=0.2,
-    ppo_steps=5,
+    ppo_epoch=5,
+    value_loss_coef=0.5,
+    entropy_coef=0.01,
     model_save_path="ckpt/best_model.pth",
     save_plot=False,
     show_plot=True,
@@ -45,7 +47,9 @@ def lambda_rm_train(
         learning_rate=learning_rate,
         discount_factor=discount_factor,
         ppo_clip=ppo_clip,
-        ppo_steps=ppo_steps
+        ppo_epoch=5,
+        value_loss_coef=0.5,
+        entropy_coef=0.01,
     )
     
     # Trends recording
@@ -99,7 +103,7 @@ def lambda_rm_train(
             reward_sum = reward_sum + reward
             
             if done:
-                loss = pg_agent.learn()
+                loss = pg_agent.update()
                 avg_completion_time = info["avg_completion_time"]
                 timeout_num = info["timeout_num"]
 
@@ -198,7 +202,9 @@ def lambda_rm_eval(
     learning_rate=0.001,
     discount_factor=1,
     ppo_clip=0.2,
-    ppo_steps=5,
+    ppo_epoch=5,
+    value_loss_coef=0.5,
+    entropy_coef=0.01,
     checkpoint_path="ckpt/best_model.pth",
     save_plot=False,
     show_plot=True,
@@ -220,8 +226,9 @@ def lambda_rm_eval(
         hidden_dim=hidden_dim,
         learning_rate=learning_rate,
         discount_factor=discount_factor,
-        ppo_clip=ppo_clip,
-        ppo_steps=ppo_steps
+        ppo_epoch=5,
+        value_loss_coef=0.5,
+        entropy_coef=0.01,
     )
 
     # Restore checkpoint model

@@ -52,8 +52,8 @@ class FaaSEnv(gym.Env):
         #  next_function_avg_interval,
         #  next_function_avg_completion_time,
         #  next_function_is_cold_start,
-        #  next_function_cpu,
-        #  next_function_memory,
+        #  next_function_avg_cpu,
+        #  next_function_avg_memory,
         #  next_function_invoke_num,
         # ]
         self.observation_dim = 1 + 2 * self.cluster.get_cluster_size() + 6
@@ -148,7 +148,7 @@ class FaaSEnv(gym.Env):
             function_dict[function_id] = {}
 
             avg_completion_time = self.request_record.get_avg_completion_time_per_function(function_id)
-            avg_interval = self.request_record.get_avg_interval_per_function(self.system_time, function_id)
+            avg_interval = self.request_record.get_avg_interval_per_function(function_id)
             avg_cpu = self.request_record.get_avg_cpu_per_function(function_id)
             avg_memory = self.request_record.get_avg_memory_per_function(function_id)
             total_sequence_size = function.get_total_sequence_size()
@@ -195,9 +195,11 @@ class FaaSEnv(gym.Env):
                 observation_i.append(available_memory)
 
             # Information of the function
-            observation_i.append(self.request_record.get_avg_interval_per_function(self.system_time, function_id))
+            observation_i.append(self.request_record.get_avg_interval_per_function(function_id))
             observation_i.append(self.request_record.get_avg_completion_time_per_function(function_id))
             observation_i.append(self.request_record.get_is_cold_start_per_function(function_id))
+            # observation_i.append(self.request_record.get_avg_cpu_per_function(function_id))
+            # observation_i.append(self.request_record.get_avg_memory_per_function(function_id))
             observation_i.append(function.get_cpu())
             observation_i.append(function.get_memory())
             if next_timestep is not None:

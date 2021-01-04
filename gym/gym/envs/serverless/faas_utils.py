@@ -337,13 +337,22 @@ class RequestRecord():
 
         return avg_completion_time
 
-    def get_avg_interval(self, system_time):
-        if system_time == 0:
+    def get_avg_interval(self):
+        total_interval = 0
+        num = 0
+        for i in range(len(self.total_request_record)):
+            if i < len(self.total_request_record) - 1:
+                old_request = self.total_request_record[i]
+                new_request = self.total_request_record[i+1]
+
+                if interval > 0:
+                    total_interval = total_interval + new_request.get_invoke_time() - old_request.get_invoke_time()
+                    num = num + 1
+
+        if num == 0:
             avg_interval = 0
         else:
-            avg_interval = len(self.total_request_record) / system_time
-
-        return avg_interval
+            avg_interval = total_interval / num
 
     def get_total_size_per_function(self, function_id):
         total_size_per_function = len(self.total_request_record_per_function[function_id])
@@ -418,13 +427,26 @@ class RequestRecord():
 
         return avg_completion_time_per_function
 
-    def get_avg_interval_per_function(self, system_time, function_id):
-        if system_time == 0:
+    def get_avg_interval_per_function(self, function_id):
+        total_interval = 0
+        num = 0
+        for i in range(len(self.total_request_record_per_function[function_id])):
+            if i < len(self.total_request_record_per_function[function_id]) - 1:
+                old_request = self.total_request_record_per_function[function_id][i]
+                new_request = self.total_request_record_per_function[function_id][i+1]
+                interval = new_request.get_invoke_time() - old_request.get_invoke_time()
+
+                if interval > 0:
+                    total_interval = total_interval + new_request.get_invoke_time() - old_request.get_invoke_time()
+                    num = num + 1
+
+        if num == 0:
             avg_interval_per_function = 0
         else:
-            avg_interval_per_function = len(self.total_request_record_per_function[function_id]) / system_time
+            avg_interval_per_function = total_interval / num
 
         return avg_interval_per_function
+
 
     def get_is_cold_start_per_function(self, function_id):
         if self.get_total_size_per_function(function_id) == 0:

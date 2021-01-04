@@ -1,19 +1,15 @@
 import numpy as np
 import torch
+import torch.nn.functional as F
 import scipy.stats as stats
 import random 
 
 
-# l = [[None]] * 3
-l = []
-for _ in range(3):
-    l.append([])
+action = torch.ones(640, 1) * 64
 
-print("before: {}".format(l))
+print(action.shape)
 
-for i in range(len(l)):
-    l[i].append("fuck")
+action = action.long()
+action = F.one_hot(action, 65).float()
 
-    print("during: {}".format(l))
-
-print("after: {}".format(l))
+print(action.shape)

@@ -70,6 +70,7 @@ class Decoder(nn.Module):
     """
     def __init__(
         self, 
+        is_actor,
         input_size, 
         hidden_size, 
         output_size,
@@ -77,6 +78,7 @@ class Decoder(nn.Module):
     ):
         super().__init__()
 
+        self.is_actor = is_actor
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.output_size = output_size
@@ -91,25 +93,30 @@ class Decoder(nn.Module):
         self.out = nn.Linear(hidden_size * 2, output_size)
 
     def embed_action(self, action):
-        action = action.long().unsqueeze(0)
-        action = F.one_hot(action, self.input_size).float()
+        action = F.one_hot(action.long(), self.input_size).float()
 
         return action
 
     def forward(self, input, last_hidden, encoder_outputs):
+        # print("input before embed: {}".format(input.shape))
         # Get the embedding of the current input word (last output word)
-        input = self.embed_action(input)
+        input = self.embed_action(input).unsqueeze(0) # (1,B,N)
+        # print("input after embed: {}".format(input.shape))
         # Calculate attention weights and apply to encoder outputs
         attn_weights = self.attention(last_hidden[-1], encoder_outputs)
         context = attn_weights.bmm(encoder_outputs.transpose(0, 1))  # (B,1,N)
         context = context.transpose(0, 1)  # (1,B,N)
         # Combine input and attended context, run through RNN
+        # print("input: {}".format(input.shape))
+        # print("context: {}".format(context.shape))
         rnn_input = torch.cat([input, context], 2)
         output, hidden = self.rnn(rnn_input, last_hidden)
         output = output.squeeze(0)  # (1,B,N) -> (B,N)
         context = context.squeeze(0)
         output = self.out(torch.cat([output, context], 1))
-        output = F.log_softmax(output, dim=1)
+
+        if self.is_actor is True:
+            output = F.log_softmax(output, dim=1)
 
         return output, hidden, attn_weights
 
@@ -118,51 +125,55 @@ class Seq2Seq(nn.Module):
     """
     Sequence to Sequence model
     """
-    def __init__(self, encoder, decoder, is_actor):
+    def __init__(self, encoder, decoder):
         super().__init__()
 
         self.encoder = encoder
         self.decoder = decoder
-        self.is_actor = is_actor
 
     def get_mask_list(self, observation, vocab_size):
+        batch_size = observation.size(1)
         max_len = observation.size(0)
+
+        # Init mask list
         mask_list = []
-
         for i in range(max_len):
-            observation_i = observation[i, :].squeeze(0)
-            invoke_num = observation_i[-1].long()
-            # Inactive functions
-            if invoke_num == 0: 
-                cpu = observation_i[-3].long()
-                memory = observation_i[-2].long()
-                encode_position = (cpu - 1) * 8 + memory - 1
-                mask = torch.ones(1, vocab_size) * -10e6
-                mask[:, encode_position] = 0
-            else:
-                mask = torch.zeros(1, vocab_size)
+            mask_list.append([])
+        
+        for i in range(max_len):
+            for j in range(batch_size):
+                observation_ij = observation[i, j, :].squeeze()
+                invoke_num = observation_ij[-1].long()
+                # Inactive functions
+                if invoke_num == 0: 
+                    cpu = observation_ij[-3].long()
+                    memory = observation_ij[-2].long()
+                    encode_position = (cpu - 1) * 8 + memory - 1
+                    mask = torch.ones(1, vocab_size) * -10e6
+                    mask[:, encode_position] = 0
+                else:
+                    mask = torch.zeros(1, vocab_size)
 
-            mask_list.append(mask)
+                mask_list[i].append(mask)
+        
+        for i in range(max_len):
+            mask_list[i] = torch.cat(mask_list[i], dim=0)
+            # print("mask_list element shape: {}".format(mask_list[i].shape))
 
         return mask_list
 
-    def forward(self, observation, action):
+    def forward(self, observation, start_of_predict):
         batch_size = observation.size(1)
-        # Output the same length of operations if actor, otherwise the value
-        if self.is_actor is True:
-            max_len = observation.size(0)
-        else:
-            max_len = 1
-
+        max_len = observation.size(0)
         vocab_size = self.decoder.output_size
         outputs = torch.zeros(max_len, batch_size, vocab_size)
 
         encoder_output, hidden = self.encoder(observation)
         hidden = hidden[:self.decoder.num_layers]
-        output = action[0, :]  # <predict>
+        output = start_of_predict  # <predict>
 
         # Get mask list if actor
-        if self.is_actor is True:
+        if self.decoder.is_actor is True:
             mask_list = self.get_mask_list(observation, vocab_size)
 
         # Inference
@@ -173,7 +184,7 @@ class Seq2Seq(nn.Module):
                 encoder_output
             )
             # Apply mask to output if actor
-            if self.is_actor is True:
+            if self.decoder.is_actor is True:
                 output = output + mask_list[t]
 
             outputs[t] = output
