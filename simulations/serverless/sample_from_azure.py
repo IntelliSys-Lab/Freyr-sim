@@ -291,39 +291,51 @@ def sample_from_trigger_dist(
             func_hash_list.append(func_hash)
 
     # Regularize duration and invocation traces
-    if len(sampled_duration_traces) != len(sampled_invocation_traces):
-        if len(sampled_duration_traces) < len(sampled_invocation_traces):
-            regularized_sampled_invocation_traces = []
+    if len(sampled_duration_traces) < len(sampled_invocation_traces):
+        regularized_sampled_invocation_traces = []
 
-            for invocation_trace in sampled_invocation_traces:
-                for duration_trace in sampled_duration_traces:
-                    if invocation_trace["HashFunction"] == duration_trace["HashFunction"]:
-                        regularized_sampled_invocation_traces.append(invocation_trace)
-                        break
-
-            sampled_invocation_traces = regularized_sampled_invocation_traces
-
-        elif len(sampled_duration_traces) > len(sampled_invocation_traces):
-            regularized_sampled_duration_traces = []
-
+        for invocation_trace in sampled_invocation_traces:
             for duration_trace in sampled_duration_traces:
-                for invocation_trace in sampled_invocation_traces:
-                    if duration_trace["HashFunction"] == invocation_trace["HashFunction"]:
-                        regularized_sampled_duration_traces.append(duration_trace)
-                        break
-        
-            sampled_duration_traces = regularized_sampled_duration_traces
+                if invocation_trace["HashFunction"] == duration_trace["HashFunction"]:
+                    regularized_sampled_invocation_traces.append(invocation_trace)
+                    break
+
+        sampled_invocation_traces = regularized_sampled_invocation_traces
+    elif len(sampled_duration_traces) > len(sampled_invocation_traces):
+        regularized_sampled_duration_traces = []
+
+        for duration_trace in sampled_duration_traces:
+            for invocation_trace in sampled_invocation_traces:
+                if duration_trace["HashFunction"] == invocation_trace["HashFunction"]:
+                    regularized_sampled_duration_traces.append(duration_trace)
+                    break
+    
+        sampled_duration_traces = regularized_sampled_duration_traces
 
     # Regularize memory traces 
-    regularized_sampled_memory_traces = []
+    if len(sampled_memory_traces) < len(sampled_duration_traces):
+        memory_app_hash_list = []
+        for memory_trace in sampled_memory_traces:
+            memory_app_hash_list.append(memory_trace["HashApp"])
 
-    for memory_trace in sampled_memory_traces:
+        lack_app_hash_list = []
         for duration_trace in sampled_duration_traces:
-            if memory_trace["HashApp"] == duration_trace["HashApp"]:
-                regularized_sampled_memory_traces.append(memory_trace)
-                break
-        
-    sampled_memory_traces = regularized_sampled_memory_traces
+            if duration_trace["HashApp"] not in memory_app_hash_list:
+                lack_app_hash_list.append(duration_trace["HashApp"])
+
+        for trace in memory_traces:
+            if trace["HashApp"] in lack_app_hash_list:
+                sampled_memory_traces.append(trace)
+
+    elif len(sampled_memory_traces) > len(sampled_duration_traces):
+        regularized_sampled_memory_traces = []
+        for duration_trace in sampled_duration_traces:
+            for memory_trace in sampled_memory_traces:
+                if duration_trace["HashApp"] == memory_trace["HashApp"]:
+                    regularized_sampled_memory_traces.append(memory_trace)
+                    break
+            
+        sampled_memory_traces = regularized_sampled_memory_traces
 
     # Write to CSV
     new_memory_df = pd.DataFrame(sampled_memory_traces)
