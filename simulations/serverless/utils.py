@@ -1,25 +1,5 @@
 import time
-import functools
 
-
-#
-# Class utilities
-#
-
-@functools.total_ordering
-class Prioritize:
-    """
-    Wrapper for non-comparative objects
-    """
-    def __init__(self, priority, item):
-        self.priority = priority
-        self.item = item
-
-    def __eq__(self, other):
-        return self.priority == other.priority
-
-    def __lt__(self, other):
-        return self.priority < other.priority
 
 #
 # Function utilities
@@ -29,58 +9,62 @@ def log_trends(
     logger_wrapper,
     rm_name,
     overwrite,
-    reward_trend,
-    avg_completion_time_trend,
-    avg_completion_time_per_function_trend,
-    timeout_num_trend,
+    reward_trend=None,
+    avg_completion_time_trend=None,
+    avg_completion_time_per_function_trend=None,
+    timeout_num_trend=None,
     loss_trend=None,
 ):
     # Log reward trend
-    logger = logger_wrapper.get_logger("RewardTrends", overwrite)
-    logger.debug("")
-    logger.debug("**********")
-    logger.debug("**********")
-    logger.debug("**********")
-    logger.debug("")
-    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    logger.debug("{}:".format(rm_name))
-    logger.debug(','.join(str(reward) for reward in reward_trend))
+    if reward_trend is not None:
+        logger = logger_wrapper.get_logger("RewardTrends", overwrite)
+        logger.debug("")
+        logger.debug("**********")
+        logger.debug("**********")
+        logger.debug("**********")
+        logger.debug("")
+        logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+        logger.debug("{}:".format(rm_name))
+        logger.debug(','.join(str(reward) for reward in reward_trend))
 
     # Log avg completion time trend
-    logger = logger_wrapper.get_logger("AvgCompletionTimeTrends", overwrite)
-    logger.debug("")
-    logger.debug("**********")
-    logger.debug("**********")
-    logger.debug("**********")
-    logger.debug("")
-    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    logger.debug("{}:".format(rm_name))
-    logger.debug(','.join(str(avg_completion_time) for avg_completion_time in avg_completion_time_trend))
+    if avg_completion_time_trend is not None:
+        logger = logger_wrapper.get_logger("AvgCompletionTimeTrends", overwrite)
+        logger.debug("")
+        logger.debug("**********")
+        logger.debug("**********")
+        logger.debug("**********")
+        logger.debug("")
+        logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+        logger.debug("{}:".format(rm_name))
+        logger.debug(','.join(str(avg_completion_time) for avg_completion_time in avg_completion_time_trend))
 
     # Log avg completion time per function trend 
-    logger = logger_wrapper.get_logger("AvgCompletionTimePerFunctionTrends", overwrite)
-    logger.debug("")
-    logger.debug("**********")
-    logger.debug("**********")
-    logger.debug("**********")
-    logger.debug("")
-    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    logger.debug("{}:".format(rm_name))
-    logger.debug("")
-    for function_id in avg_completion_time_per_function_trend.keys():
-        logger.debug("{}:".format(function_id))
-        logger.debug(','.join(str(avg_completion_time) for avg_completion_time in avg_completion_time_per_function_trend[function_id]))
+    if avg_completion_time_per_function_trend is not None:
+        logger = logger_wrapper.get_logger("AvgCompletionTimePerFunctionTrends", overwrite)
+        logger.debug("")
+        logger.debug("**********")
+        logger.debug("**********")
+        logger.debug("**********")
+        logger.debug("")
+        logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+        logger.debug("{}:".format(rm_name))
+        logger.debug("")
+        for function_id in avg_completion_time_per_function_trend.keys():
+            logger.debug("{}:".format(function_id))
+            logger.debug(','.join(str(avg_completion_time) for avg_completion_time in avg_completion_time_per_function_trend[function_id]))
 
     # Log timeout number trend
-    logger = logger_wrapper.get_logger("TimeoutNumTrends", overwrite)
-    logger.debug("")
-    logger.debug("**********")
-    logger.debug("**********")
-    logger.debug("**********")
-    logger.debug("")
-    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    logger.debug("{}:".format(rm_name))
-    logger.debug(','.join(str(timeout_num) for timeout_num in timeout_num_trend))
+    if timeout_num_trend is not None:
+        logger = logger_wrapper.get_logger("TimeoutNumTrends", overwrite)
+        logger.debug("")
+        logger.debug("**********")
+        logger.debug("**********")
+        logger.debug("**********")
+        logger.debug("")
+        logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+        logger.debug("{}:".format(rm_name))
+        logger.debug(','.join(str(timeout_num) for timeout_num in timeout_num_trend))
 
     # Log loss trend
     if loss_trend is not None:

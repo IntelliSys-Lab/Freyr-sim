@@ -8,7 +8,8 @@ from logger import Logger
 from fixed_rm import fixed_rm
 from greedy_rm import greedy_rm
 from ensure_rm import ensure_rm
-from lambda_rm import lambda_rm_train, lambda_rm_eval
+from lambda_rm_train import lambda_rm_train
+from lambda_rm_eval import lambda_rm_eval
 
 
 def launch():
@@ -18,40 +19,27 @@ def launch():
 
     # Generate workload
     workload_generator = WorkloadGenerator()
-    
-    # timetable_params = TimetableParameters(
-    #     max_timestep=60,
-    #     distribution_type="mod",
-    #     mod_factors=[10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
-    # )
-    # timetable_params = TimetableParameters(
-    #     max_timestep=60,
-    #     distribution_type="bernoulli",
-    #     bernoulli_p=0.5
-    # )
-    # timetable_params = TimetableParameters(
-    #     max_timestep=60,
-    #     distribution_type="poisson",
-    #     poisson_mu=0.8
-    # )
-    timetable_params = None # Azure traces
-    
     profile, timetable = workload_generator.generate_workload(
-        # default="ensure",
         default="azure",
-        timetable_params=timetable_params
+        max_timestep=600,
+        azure_file_path="azurefunctions-dataset2019/",
+        memory_traces_file="simple_memory_traces.csv",
+        duration_traces_file="simple_duration_traces.csv",
+        invocation_traces_file="simple_invocation_traces.csv"
     )
     
     # Set paramters for FaaSEnv
     env_params = EnvParameters(
+        max_function=500,
+        max_server=100,
         cluster_size=30,
-        user_cpu_per_server=8,
-        user_memory_per_server=8,
+        user_cpu_per_server=64,
+        user_memory_per_server=64,
         keep_alive_window_per_server=60,
         cpu_cap_per_function=8,
         memory_cap_per_function=8,
-        timeout_penalty=600,
         interval=1,
+        timeout_penalty=600
     )
     
     # Start simulations
@@ -85,22 +73,6 @@ def launch():
         logger_wrapper=logger_wrapper
     )
 
-    lambda_rm_train(
-        profile=profile,
-        timetable=timetable,
-        env_params=env_params,
-        max_episode=1000,
-        hidden_dims=[32, 16],
-        learning_rate=0.001,
-        discount_factor=1,
-        ppo_clip=0.2,
-        ppo_steps=5,
-        model_save_path="ckpt/best_model.pth",
-        save_plot=True,
-        show_plot=False,
-        logger_wrapper=logger_wrapper
-    )
-
     lambda_rm_eval(
         profile=profile,
         timetable=timetable,
@@ -110,7 +82,9 @@ def launch():
         learning_rate=0.001,
         discount_factor=1,
         ppo_clip=0.2,
-        ppo_steps=5,
+        ppo_epoch=5,
+        value_loss_coef=0.5,
+        entropy_coef=0.01,
         checkpoint_path="ckpt/best_model.pth",
         save_plot=True,
         show_plot=False,

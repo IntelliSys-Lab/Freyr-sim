@@ -4,9 +4,11 @@ import numpy as np
 import queue
 import matplotlib.pyplot as plt
 import gym
+
+from gym.envs.serverless.faas_utils import Prioritize
 from logger import Logger
 from plotter import Plotter
-from utils import Prioritize, log_trends, log_resource_utils, log_function_throughput
+from utils import log_trends, log_resource_utils, log_function_throughput
 
 
 #

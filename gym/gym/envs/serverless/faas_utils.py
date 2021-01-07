@@ -909,7 +909,7 @@ class Cluster():
         user_memory_per_server=8,
         keep_alive_window_per_server=60
     ):
-        self.cluster_size = 10
+        self.cluster_size = cluster_size
         self.schedule_step_size = schedule_step_size
         self.user_cpu_per_server = user_cpu_per_server
         self.user_memory_per_server = user_memory_per_server

@@ -78,39 +78,71 @@ class MLP(nn.Module):
         return observation_pos, action_pos
 
     def get_mask(self, observation):
-        observation = observation.squeeze()
-        function_num = int((self.action_dim - 1) / 4)
-
         # Hard-coded limits
         cpu_cap_per_function = 8
         cpu_least_hint = 1
         memory_cap_per_function = 8
         memory_least_hint = 1
 
-        # Init mask
-        mask = torch.zeros(self.action_dim)
+        function_num = int((self.action_dim - 1) / 4)
 
-        for i in range(function_num):
-            observation_pos, action_pos = self.get_encode_pos(i)
-            # No invocation
-            if observation[observation_pos["invoke_num"]] == 0: 
-                mask[action_pos["decrease_cpu"]] = -10e6
-                mask[action_pos["increase_cpu"]] = -10e6
-                mask[action_pos["decrease_memory"]] = -10e6
-                mask[action_pos["increase_memory"]] = -10e6
-            # Invocation
-            else:
-                # Mask out action cpu access
-                if observation[observation_pos["cpu_direction"]] == 1 or observation[observation_pos["cpu"]] == cpu_least_hint:
+        # Create mask(s)
+        if observation.size(0) == 1:
+            observation = observation.squeeze()
+
+            # Init mask
+            mask = torch.zeros(self.action_dim)
+
+            for i in range(function_num):
+                observation_pos, action_pos = self.get_encode_pos(i)
+                # No invocation
+                if observation[observation_pos["invoke_num"]] == 0: 
+                    # print("function {} no invoke".format(i))
                     mask[action_pos["decrease_cpu"]] = -10e6
-                elif observation[observation_pos["cpu_direction"]] == -1 or observation[observation_pos["cpu"]] == cpu_cap_per_function:
                     mask[action_pos["increase_cpu"]] = -10e6
-                
-                # Mask out action memory access
-                if observation[observation_pos["memory_direction"]] == 1 or observation[observation_pos["memory"]] == memory_least_hint:
                     mask[action_pos["decrease_memory"]] = -10e6
-                elif observation[observation_pos["memory_direction"]] == -1 or observation[observation_pos["memory"]] == memory_cap_per_function:
                     mask[action_pos["increase_memory"]] = -10e6
+                # Invocation
+                else:
+                    # Mask out action cpu access
+                    if observation[observation_pos["cpu_direction"]] == 1 or observation[observation_pos["cpu"]] == cpu_least_hint:
+                        mask[action_pos["decrease_cpu"]] = -10e6
+                    elif observation[observation_pos["cpu_direction"]] == -1 or observation[observation_pos["cpu"]] == cpu_cap_per_function:
+                        mask[action_pos["increase_cpu"]] = -10e6
+                    
+                    # Mask out action memory access
+                    if observation[observation_pos["memory_direction"]] == 1 or observation[observation_pos["memory"]] == memory_least_hint:
+                        mask[action_pos["decrease_memory"]] = -10e6
+                    elif observation[observation_pos["memory_direction"]] == -1 or observation[observation_pos["memory"]] == memory_cap_per_function:
+                        mask[action_pos["increase_memory"]] = -10e6
+        else:
+            # Init mask
+            mask = torch.zeros(observation.size(0), self.action_dim)
+
+            for i in range(function_num):
+                observation_pos, action_pos = self.get_encode_pos(i)
+
+                for j in range(observation.size(0)):
+                    observation_j = observation[j, :]
+                    # No invocation
+                    if observation_j[observation_pos["invoke_num"]] == 0: 
+                        mask[j, action_pos["decrease_cpu"]] = -10e6
+                        mask[j, action_pos["increase_cpu"]] = -10e6
+                        mask[j, action_pos["decrease_memory"]] = -10e6
+                        mask[j, action_pos["increase_memory"]] = -10e6
+                    # Invocation
+                    else:
+                        # Mask out action cpu access
+                        if observation_j[observation_pos["cpu_direction"]] == 1 or observation_j[observation_pos["cpu"]] == cpu_least_hint:
+                            mask[j, action_pos["decrease_cpu"]] = -10e6
+                        elif observation_j[observation_pos["cpu_direction"]] == -1 or observation_j[observation_pos["cpu"]] == cpu_cap_per_function:
+                            mask[j, action_pos["increase_cpu"]] = -10e6
+                        
+                        # Mask out action memory access
+                        if observation_j[observation_pos["memory_direction"]] == 1 or observation_j[observation_pos["memory"]] == memory_least_hint:
+                            mask[j, action_pos["decrease_memory"]] = -10e6
+                        elif observation_j[observation_pos["memory_direction"]] == -1 or observation_j[observation_pos["memory"]] == memory_cap_per_function:
+                            mask[j, action_pos["increase_memory"]] = -10e6
 
         return mask
         
@@ -121,8 +153,11 @@ class MLP(nn.Module):
 
         # Apply mask if actor
         if self.is_actor is True:
+            # print("input before mask: {}".format(x))
             mask = self.get_mask(observation)
+            # print("mask: {}".format(mask))
             x = x + mask
+            # print("input after mask: {}".format(x))
 
         return x
 
