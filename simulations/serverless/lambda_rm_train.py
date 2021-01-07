@@ -4,6 +4,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import multiprocessing
+try:
+    multiprocessing.set_start_method('spawn')
+except RuntimeError:
+    print("Unable to set_start_method(spawn)")
 import gym
 
 from gym.envs.serverless.faas_params import EnvParameters
@@ -11,57 +15,79 @@ from workload_generator import WorkloadGenerator
 from logger import Logger
 from plotter import Plotter
 from ppo2_agent import PPO2Agent
-from utils import log_trends
+from utils import log_trends, DEVICE
 
 
 #
 # Generating workloads via multiprocessing
 #
 
+def batch_workload(
+    workload_id,
+    workload_type,
+    max_timestep,
+    max_function,
+    max_server,
+    cluster_size,
+    user_cpu_per_server,
+    user_memory_per_server,
+    keep_alive_window_per_server,
+    cpu_cap_per_function,
+    memory_cap_per_function,
+    interval,
+    timeout_penalty,
+    result_dict
+):
+    # Set up workload generator
+    workload_generator = WorkloadGenerator()
+
+    azure_file_path="azurefunctions-dataset2019/"
+    memory_traces_file="sampled_memory_traces_{}.csv".format(workload_id)
+    duration_traces_file="sampled_duration_traces_{}.csv".format(workload_id)
+    invocation_traces_file="sampled_invocation_traces_{}.csv".format(workload_id)
+
+    profile, timetable = workload_generator.generate_workload(
+        default=workload_type,
+        max_timestep=max_timestep,
+        azure_file_path=azure_file_path,
+        memory_traces_file=memory_traces_file,
+        duration_traces_file=duration_traces_file,
+        invocation_traces_file=invocation_traces_file
+    )
+
+    # Set paramters 
+    env_params = EnvParameters(
+        max_function=max_function,
+        max_server=max_server,
+        cluster_size=cluster_size,
+        user_cpu_per_server=user_cpu_per_server,
+        user_memory_per_server=user_memory_per_server,
+        keep_alive_window_per_server=keep_alive_window_per_server,
+        cpu_cap_per_function=cpu_cap_per_function,
+        memory_cap_per_function=memory_cap_per_function,
+        interval=interval,
+        timeout_penalty=timeout_penalty
+    )
+
+    result_dict[workload_id]["profile"] = profile
+    result_dict[workload_id]["timetable"] = timetable
+    result_dict[workload_id]["env_params"] = env_params
+
 def generate_workload_dict(
-    workload_type="azure",
-    max_workload=50
+    workload_type,
+    max_workload,
+    max_timestep, 
+    max_function,
+    max_server,
+    cluster_size,
+    user_cpu_per_server,
+    user_memory_per_server,
+    keep_alive_window_per_server,
+    cpu_cap_per_function,
+    memory_cap_per_function,
+    interval,
+    timeout_penalty
 ):  
-    def batch_workload(
-        workload_type,
-        workload_id,
-        result_dict
-    ):
-        # Set up workload generator
-        workload_generator = WorkloadGenerator()
-
-        azure_file_path="azurefunctions-dataset2019/"
-        memory_traces_file="sampled_memory_traces_{}.csv".format(workload_id)
-        duration_traces_file="sampled_duration_traces_{}.csv".format(workload_id)
-        invocation_traces_file="sampled_invocation_traces_{}.csv".format(workload_id)
-
-        profile, timetable = workload_generator.generate_workload(
-            default=workload_type,
-            max_timestep=max_timestep,
-            azure_file_path=azure_file_path,
-            memory_traces_file=memory_traces_file,
-            duration_traces_file=duration_traces_file,
-            invocation_traces_file=invocation_traces_file
-        )
-
-        # Set paramters 
-        env_params = EnvParameters(
-            max_function=max_function,
-            max_server=max_server,
-            cluster_size=cluster_size,
-            user_cpu_per_server=user_cpu_per_server,
-            user_memory_per_server=user_memory_per_server,
-            keep_alive_window_per_server=keep_alive_window_per_server,
-            cpu_cap_per_function=cpu_cap_per_function,
-            memory_cap_per_function=memory_cap_per_function,
-            interval=interval,
-            timeout_penalty=timeout_penalty
-        )
-
-        result_dict[workload_id]["profile"] = profile
-        result_dict[workload_id]["timetable"] = timetable
-        result_dict[workload_id]["env_params"] = env_params
-
     # Init workload dict
     workload_dict = {}
 
@@ -75,7 +101,22 @@ def generate_workload_dict(
         
         p = multiprocessing.Process(
             target=batch_workload,
-            args=(workload_type, workload_id, result_dict,)
+            args=(
+                workload_id, 
+                workload_type, 
+                max_timestep, 
+                max_function,
+                max_server,
+                cluster_size,
+                user_cpu_per_server,
+                user_memory_per_server,
+                keep_alive_window_per_server,
+                cpu_cap_per_function,
+                memory_cap_per_function,
+                interval,
+                timeout_penalty,
+                result_dict,
+            )
         )
         jobs.append(p)
         p.start()
@@ -98,6 +139,7 @@ def generate_workload_dict(
 
 def batch_training(
     workload_id,
+    device,
     env,
     agent,
     result_dict
@@ -118,6 +160,7 @@ def batch_training(
     episode_done = False
     while episode_done is False:
         actual_time = actual_time + 1
+        observation.to(device)
         action, value_pred, log_prob = agent.choose_action(observation)
         next_observation, reward, done, info = env.step(action)
 
@@ -267,7 +310,7 @@ def lambda_rm_train(
             
             p = torch.multiprocessing.Process(
                 target=batch_training,
-                args=(workload_id, env, agent, result_dict,)
+                args=(workload_id, DEVICE, env, agent, result_dict,)
             )
             batch.append(p)
             p.start()
@@ -356,9 +399,9 @@ if __name__ == "__main__":
     entropy_coef = 0.01
     model_save_path = "ckpt/best_model.pth"
     max_timestep = 600
-    max_function = 100
+    max_function = 200
     max_server = 20
-    cluster_size = 5
+    cluster_size = 10
     user_cpu_per_server = 64
     user_memory_per_server = 64
     keep_alive_window_per_server = 60
@@ -376,7 +419,21 @@ if __name__ == "__main__":
     print("**********")
     print("")
     print("Generating workloads...")
-    workload_dict = generate_workload_dict(workload_type="azure", max_workload=max_workload)
+    workload_dict = generate_workload_dict(
+        workload_type=workload_type, 
+        max_workload=max_workload,
+        max_timestep=max_timestep, 
+        max_function=max_function,
+        max_server=max_server,
+        cluster_size=cluster_size,
+        user_cpu_per_server=user_cpu_per_server,
+        user_memory_per_server=user_memory_per_server,
+        keep_alive_window_per_server=keep_alive_window_per_server,
+        cpu_cap_per_function=cpu_cap_per_function,
+        memory_cap_per_function=memory_cap_per_function,
+        interval=interval,
+        timeout_penalty=timeout_penalty
+    )
 
     # Start training
     observation_dim = 1 + 2 * max_server + 8 * max_function

@@ -3,7 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
 import numpy as np
+
 from mlp import MLP
+from utils import DEVICE
 
 
 class ActorCritic(nn.Module):
@@ -37,6 +39,8 @@ class PPO2Agent():
         value_loss_coef=0.5,
         entropy_coef=0.01
     ):
+        self.device = DEVICE
+
         self.observation_dim = observation_dim
         self.action_dim = action_dim
         self.hidden_dims = hidden_dims
@@ -68,7 +72,7 @@ class PPO2Agent():
             is_actor=False
         )
 
-        ac_model = ActorCritic(actor, critic)
+        ac_model = ActorCritic(actor, critic).to(self.device)
 
         return ac_model
 
@@ -101,10 +105,10 @@ class PPO2Agent():
             batch_size = len(observation_history_batch)
             for i in range(batch_size):
                 observation_history = observation_history_batch[i]
-                action_history = action_history_batch[i]
+                action_history = action_history_batch[i].to(self.device)
                 reward_history = reward_history_batch[i]
                 value_history = value_history_batch[i]
-                log_prob_history = log_prob_history_batch[i]
+                log_prob_history = log_prob_history_batch[i].to(self.device)
 
                 # print("History after analysis: ")
                 # print("observation_history: {}".format(observation_history.shape))
@@ -114,7 +118,7 @@ class PPO2Agent():
                 # print("log_prob_history shape: {}".format(log_prob_history.shape))
 
                 # Discount rewards
-                reward_history = self.discount_rewards(reward_history)
+                reward_history = self.discount_rewards(reward_history).to(self.device)
 
                 # Calculate advantage
                 advantage = reward_history - value_history
