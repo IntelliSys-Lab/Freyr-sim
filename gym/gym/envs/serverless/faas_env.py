@@ -1,3 +1,4 @@
+import sys
 import gym
 from gym import spaces, logger
 import numpy as np
@@ -106,6 +107,9 @@ class FaaSEnv(gym.Env):
             resource = None
             adjust = None
             print("Exceed function invoke list!")
+            print("action: {}".format(action))
+            print("function_invoke_list len: {}, function_index: {}".format(len(function_invoke_list), function_index))
+            sys.exit()
         else:
             function_id = function_invoke_list[function_index]
             adjust = 0
@@ -268,6 +272,10 @@ class FaaSEnv(gym.Env):
 
         observation = np.zeros(self.observation_dim)
 
+        # Init mask, always unmask action void
+        mask = np.ones(self.action_dim) * -10e8
+        mask[-1] = 0
+
          # Number of undone requests
         observation[0] = self.request_record.get_undone_size()
 
@@ -285,22 +293,54 @@ class FaaSEnv(gym.Env):
             for function_id in next_timestep.keys():
                 if next_timestep[function_id] > 0:
                     function = function_profile[function_id]
+                    cpu_cap_per_function = function.params.cpu_cap_per_function
+                    cpu_least_hint = function.params.cpu_least_hint
+                    memory_cap_per_function = function.params.memory_cap_per_function
+                    memory_least_hint = function.params.memory_least_hint
                     
-                    observation[base_function + 8*offset_function + 1] = self.request_record.get_avg_interval_per_function(function_id)
-                    observation[base_function + 8*offset_function + 2] = self.request_record.get_avg_completion_time_per_function(function.function_id)
-                    observation[base_function + 8*offset_function + 3] = self.request_record.get_is_cold_start_per_function(function_id)
-                    observation[base_function + 8*offset_function + 4] = function.get_cpu()
-                    observation[base_function + 8*offset_function + 5] = function.get_memory()
-                    observation[base_function + 8*offset_function + 6] = function.get_resource_adjust_direction("cpu")
-                    observation[base_function + 8*offset_function + 7] = function.get_resource_adjust_direction("memory")
-                    observation[base_function + 8*offset_function + 8] = next_timestep[function_id]
+                    avg_interval = self.request_record.get_avg_interval_per_function(function_id)
+                    avg_completion_time = self.request_record.get_avg_completion_time_per_function(function.function_id)
+                    is_cold_start = self.request_record.get_is_cold_start_per_function(function_id)
+                    cpu = function.get_cpu()
+                    memory = function.get_memory()
+                    cpu_adjust_direction = function.get_resource_adjust_direction("cpu")
+                    memory_adjust_direction = function.get_resource_adjust_direction("memory")
+                    invoke_num = next_timestep[function_id]
+                    
+                    observation[base_function + 8*offset_function + 1] = avg_interval
+                    observation[base_function + 8*offset_function + 2] = avg_completion_time
+                    observation[base_function + 8*offset_function + 3] = is_cold_start
+                    observation[base_function + 8*offset_function + 4] = cpu
+                    observation[base_function + 8*offset_function + 5] = memory
+                    observation[base_function + 8*offset_function + 6] = cpu_adjust_direction
+                    observation[base_function + 8*offset_function + 7] = memory_adjust_direction
+                    observation[base_function + 8*offset_function + 8] = invoke_num
+
+                    # Unmask action cpu access
+                    if cpu_adjust_direction == 0: 
+                        mask[4*offset_function + 0] = 0 # Decrease one CPU slot
+                        mask[4*offset_function + 1] = 0 # Increase one CPU slot
+                    elif cpu_adjust_direction == -1 and cpu > cpu_least_hint:
+                        mask[4*offset_function + 0] = 0 # Decrease one CPU slot
+                    elif cpu_adjust_direction == 1 and cpu < cpu_cap_per_function:
+                        mask[4*offset_function + 1] = 0 # Increase one CPU slot
+
+                    # Unmask action memory access
+                    if memory_adjust_direction == 0: 
+                        mask[4*offset_function + 2] = 0 # Decrease one memory slot
+                        mask[4*offset_function + 3] = 0 # Increase one memory slot
+                    if memory_adjust_direction == -1 and memory > memory_least_hint:
+                        mask[4*offset_function + 2] = 0 # Decrease one memory slot
+                    elif memory_adjust_direction == 1 and memory < memory_cap_per_function:
+                        mask[4*offset_function + 3] = 0 # Increase one memory slot
 
                     offset_function = offset_function + 1
         
-        observation = np.array(observation)
-        observation = torch.Tensor(observation[np.newaxis, :])
-        
-        return observation
+        observation = torch.Tensor(observation).unsqueeze(0)
+        mask = torch.Tensor(mask).unsqueeze(0)
+
+        return observation, mask
+
     #
     # Calculate reward for current timestep
     #
@@ -388,7 +428,7 @@ class FaaSEnv(gym.Env):
                 function.reset_resource_adjust_direction()
             
         # Get observation for next state
-        observation = self.get_observation()
+        observation, mask = self.get_observation()
         
         # Done?
         done = self.get_done()
@@ -396,7 +436,7 @@ class FaaSEnv(gym.Env):
         # Return info
         info = self.get_info()
         
-        return observation, reward, done, info
+        return observation, mask, reward, done, info
     
     def reset(self):
         self.system_time = 0
@@ -406,9 +446,9 @@ class FaaSEnv(gym.Env):
         self.request_record.reset()
         self.resource_utils_record.reset()
         
-        observation = self.get_observation()
+        observation, mask = self.get_observation()
         
-        return observation
+        return observation, mask
     
     
     

@@ -42,7 +42,7 @@ def ensure_rm(
     
     # Start random provision
     for episode in range(max_episode):
-        observation = env.reset()
+        observation, mask = env.reset()
         reward_sum = 0
         actual_time = 0
         system_time = 0
@@ -59,7 +59,7 @@ def ensure_rm(
         episode_done = False
         while episode_done is False:
             actual_time = actual_time + 1
-            next_observation, reward, done, info = env.step(action)
+            next_observation, next_mask, reward, done, info = env.step(action)
             
             if system_time < info["system_time"]:
                 system_time = info["system_time"]
@@ -214,6 +214,7 @@ def ensure_rm(
                 episode_done = True
             
             observation = next_observation
+            mask = next_mask
     
     # Plot each episode 
     plotter = Plotter()

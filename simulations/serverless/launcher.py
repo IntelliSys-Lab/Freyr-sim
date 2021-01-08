@@ -21,18 +21,18 @@ def launch():
     workload_generator = WorkloadGenerator()
     profile, timetable = workload_generator.generate_workload(
         default="azure",
-        max_timestep=600,
+        max_timestep=60,
         azure_file_path="azurefunctions-dataset2019/",
-        memory_traces_file="simple_memory_traces.csv",
-        duration_traces_file="simple_duration_traces.csv",
-        invocation_traces_file="simple_invocation_traces.csv"
+        memory_traces_file="sampled_memory_traces_0.csv",
+        duration_traces_file="sampled_duration_traces_0.csv",
+        invocation_traces_file="sampled_invocation_traces_0.csv"
     )
     
     # Set paramters for FaaSEnv
     env_params = EnvParameters(
-        max_function=500,
-        max_server=100,
-        cluster_size=30,
+        max_function=100,
+        max_server=20,
+        cluster_size=10,
         user_cpu_per_server=64,
         user_memory_per_server=64,
         keep_alive_window_per_server=60,
@@ -73,23 +73,23 @@ def launch():
         logger_wrapper=logger_wrapper
     )
 
-    lambda_rm_eval(
-        profile=profile,
-        timetable=timetable,
-        env_params=env_params,
-        max_episode=10,
-        hidden_dims=[32, 16],
-        learning_rate=0.001,
-        discount_factor=1,
-        ppo_clip=0.2,
-        ppo_epoch=5,
-        value_loss_coef=0.5,
-        entropy_coef=0.01,
-        checkpoint_path="ckpt/best_model.pth",
-        save_plot=True,
-        show_plot=False,
-        logger_wrapper=logger_wrapper
-    )
+    # lambda_rm_eval(
+    #     profile=profile,
+    #     timetable=timetable,
+    #     env_params=env_params,
+    #     max_episode=10,
+    #     hidden_dims=[32, 16],
+    #     learning_rate=0.001,
+    #     discount_factor=1,
+    #     ppo_clip=0.2,
+    #     ppo_epoch=5,
+    #     value_loss_coef=0.5,
+    #     entropy_coef=0.01,
+    #     checkpoint_path="ckpt/best_model.pth",
+    #     save_plot=True,
+    #     show_plot=False,
+    #     logger_wrapper=logger_wrapper
+    # )
 
 
 if __name__ == "__main__":

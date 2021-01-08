@@ -18,50 +18,72 @@ from utils import log_trends
 # Generating workloads via multiprocessing
 #
 
+def batch_workload(
+    workload_id,
+    workload_type,
+    max_timestep,
+    max_function,
+    max_server,
+    cluster_size,
+    user_cpu_per_server,
+    user_memory_per_server,
+    keep_alive_window_per_server,
+    cpu_cap_per_function,
+    memory_cap_per_function,
+    interval,
+    timeout_penalty,
+    result_dict
+):
+    # Set up workload generator
+    workload_generator = WorkloadGenerator()
+
+    azure_file_path="azurefunctions-dataset2019/"
+    memory_traces_file="sampled_memory_traces_{}.csv".format(workload_id)
+    duration_traces_file="sampled_duration_traces_{}.csv".format(workload_id)
+    invocation_traces_file="sampled_invocation_traces_{}.csv".format(workload_id)
+
+    profile, timetable = workload_generator.generate_workload(
+        default=workload_type,
+        max_timestep=max_timestep,
+        azure_file_path=azure_file_path,
+        memory_traces_file=memory_traces_file,
+        duration_traces_file=duration_traces_file,
+        invocation_traces_file=invocation_traces_file
+    )
+
+    # Set paramters 
+    env_params = EnvParameters(
+        max_function=max_function,
+        max_server=max_server,
+        cluster_size=cluster_size,
+        user_cpu_per_server=user_cpu_per_server,
+        user_memory_per_server=user_memory_per_server,
+        keep_alive_window_per_server=keep_alive_window_per_server,
+        cpu_cap_per_function=cpu_cap_per_function,
+        memory_cap_per_function=memory_cap_per_function,
+        interval=interval,
+        timeout_penalty=timeout_penalty
+    )
+
+    result_dict[workload_id]["profile"] = profile
+    result_dict[workload_id]["timetable"] = timetable
+    result_dict[workload_id]["env_params"] = env_params
+
 def generate_workload_dict(
-    workload_type="azure",
-    max_workload=50
+    workload_type,
+    max_workload,
+    max_timestep, 
+    max_function,
+    max_server,
+    cluster_size,
+    user_cpu_per_server,
+    user_memory_per_server,
+    keep_alive_window_per_server,
+    cpu_cap_per_function,
+    memory_cap_per_function,
+    interval,
+    timeout_penalty
 ):  
-    def batch_workload(
-        workload_type,
-        workload_id,
-        result_dict
-    ):
-        # Set up workload generator
-        workload_generator = WorkloadGenerator()
-
-        azure_file_path="azurefunctions-dataset2019/"
-        memory_traces_file="sampled_memory_traces_{}.csv".format(workload_id)
-        duration_traces_file="sampled_duration_traces_{}.csv".format(workload_id)
-        invocation_traces_file="sampled_invocation_traces_{}.csv".format(workload_id)
-
-        profile, timetable = workload_generator.generate_workload(
-            default=workload_type,
-            max_timestep=max_timestep,
-            azure_file_path=azure_file_path,
-            memory_traces_file=memory_traces_file,
-            duration_traces_file=duration_traces_file,
-            invocation_traces_file=invocation_traces_file
-        )
-
-        # Set paramters 
-        env_params = EnvParameters(
-            max_function=max_function,
-            max_server=max_server,
-            cluster_size=cluster_size,
-            user_cpu_per_server=user_cpu_per_server,
-            user_memory_per_server=user_memory_per_server,
-            keep_alive_window_per_server=keep_alive_window_per_server,
-            cpu_cap_per_function=cpu_cap_per_function,
-            memory_cap_per_function=memory_cap_per_function,
-            interval=interval,
-            timeout_penalty=timeout_penalty
-        )
-
-        result_dict[workload_id]["profile"] = profile
-        result_dict[workload_id]["timetable"] = timetable
-        result_dict[workload_id]["env_params"] = env_params
-
     # Init workload dict
     workload_dict = {}
 
@@ -75,7 +97,22 @@ def generate_workload_dict(
         
         p = multiprocessing.Process(
             target=batch_workload,
-            args=(workload_type, workload_id, result_dict,)
+            args=(
+                workload_id, 
+                workload_type, 
+                max_timestep, 
+                max_function,
+                max_server,
+                cluster_size,
+                user_cpu_per_server,
+                user_memory_per_server,
+                keep_alive_window_per_server,
+                cpu_cap_per_function,
+                memory_cap_per_function,
+                interval,
+                timeout_penalty,
+                result_dict,
+            )
         )
         jobs.append(p)
         p.start()
@@ -102,7 +139,7 @@ def batch_training(
     agent,
     result_dict
 ):
-    observation = env.reset()
+    observation, mask = env.reset()
     agent.reset()
 
     actual_time = 0
@@ -110,6 +147,7 @@ def batch_training(
     reward_sum = 0
 
     observation_history = []
+    mask_history = []
     action_history = []
     reward_history = []
     value_history = []
@@ -118,16 +156,18 @@ def batch_training(
     episode_done = False
     while episode_done is False:
         actual_time = actual_time + 1
-        action, value_pred, log_prob = agent.choose_action(observation)
-        next_observation, reward, done, info = env.step(action)
+        action, value_pred, log_prob = agent.choose_action(observation, mask)
+        next_observation, next_mask, reward, done, info = env.step(action)
 
         # Detach tensors
         observation = observation.detach()
+        mask = mask.detach()
         action = action.detach()
         value_pred = value_pred.detach()
         log_prob = log_prob.detach()
 
         observation_history.append(observation)
+        mask_history.append(mask)
         action_history.append(action)
         reward_history.append(reward)
         value_history.append(value_pred)
@@ -146,6 +186,7 @@ def batch_training(
             result_dict[workload_id]["timeout_num"] = info["timeout_num"]
 
             result_dict[workload_id]["observation_history"] = observation_history
+            result_dict[workload_id]["mask_history"] = mask_history
             result_dict[workload_id]["action_history"] = action_history
             result_dict[workload_id]["reward_history"] = reward_history
             result_dict[workload_id]["value_history"] = value_history
@@ -154,6 +195,7 @@ def batch_training(
             episode_done = True
         
         observation = next_observation
+        mask = next_mask
 
 #
 # Process all data collected from the result dict
@@ -165,7 +207,9 @@ def process_result_dict(result_dict):
     reward_sum_batch = []
     avg_completion_time_batch = []
     timeout_num_batch = []
+
     observation_history_batch = []
+    mask_history_batch = []
     action_history_batch = []
     reward_history_batch = []
     value_history_batch = []
@@ -178,11 +222,12 @@ def process_result_dict(result_dict):
         avg_completion_time_batch.append(result_dict[workload_id]["avg_completion_time"])
         timeout_num_batch.append(result_dict[workload_id]["timeout_num"])
 
-        observation_history_batch.append(result_dict[workload_id]["observation_history"])
-        action_history_batch.append(result_dict[workload_id]["action_history"])
+        observation_history_batch.append(torch.cat(result_dict[workload_id]["observation_history"], dim=0))
+        mask_history_batch.append(torch.cat(result_dict[workload_id]["mask_history"], dim=0))
+        action_history_batch.append(torch.cat(result_dict[workload_id]["action_history"], dim=0))
         reward_history_batch.append(result_dict[workload_id]["reward_history"])
-        value_history_batch.append(result_dict[workload_id]["value_history"])
-        log_prob_history_batch.append(result_dict[workload_id]["log_prob_history"])
+        value_history_batch.append(torch.cat(result_dict[workload_id]["value_history"]).squeeze())
+        log_prob_history_batch.append(torch.cat(result_dict[workload_id]["log_prob_history"], dim=0))
 
     actual_time = np.mean(actual_time_batch)
     system_time = np.mean(system_time_batch)
@@ -191,7 +236,7 @@ def process_result_dict(result_dict):
     timeout_num = np.mean(timeout_num_batch)
 
     return actual_time, system_time, reward_sum, avg_completion_time, timeout_num, \
-        observation_history_batch, action_history_batch, reward_history_batch, value_history_batch, log_prob_history_batch
+        observation_history_batch, mask_history_batch, action_history_batch, reward_history_batch, value_history_batch, log_prob_history_batch
 
 #
 # Policy gradient provision strategy
@@ -277,11 +322,12 @@ def lambda_rm_train(
 
         # Process results
         actual_time, system_time, reward_sum, avg_completion_time, timeout_num, \
-            observation_history_batch, action_history_batch, reward_history_batch, value_history_batch, log_prob_history_batch \
+            observation_history_batch, mask_history_batch, action_history_batch, reward_history_batch, value_history_batch, log_prob_history_batch \
                 = process_result_dict(result_dict)
 
         loss = agent.update(
             observation_history_batch=observation_history_batch,
+            mask_history_batch=mask_history_batch,
             action_history_batch=action_history_batch,
             reward_history_batch=reward_history_batch,
             value_history_batch=value_history_batch,
@@ -343,6 +389,12 @@ def lambda_rm_train(
 
 
 if __name__ == "__main__":
+    # Prevent torch.multiprocessing from deadlocks: https://github.com/pytorch/pytorch/issues/48382
+    try:
+        torch.multiprocessing.set_start_method('spawn')
+    except RuntimeError:
+        print("Unable to set_start_method('spawn')!")
+
     # Training paramters
     workload_type = "azure"
     max_workload = 10
@@ -355,10 +407,10 @@ if __name__ == "__main__":
     value_loss_coef = 0.5
     entropy_coef = 0.01
     model_save_path = "ckpt/best_model.pth"
-    max_timestep = 600
-    max_function = 100
+    max_timestep = 60
+    max_function = 200
     max_server = 20
-    cluster_size = 5
+    cluster_size = 10
     user_cpu_per_server = 64
     user_memory_per_server = 64
     keep_alive_window_per_server = 60
@@ -376,7 +428,21 @@ if __name__ == "__main__":
     print("**********")
     print("")
     print("Generating workloads...")
-    workload_dict = generate_workload_dict(workload_type="azure", max_workload=max_workload)
+    workload_dict = generate_workload_dict(
+        workload_type=workload_type, 
+        max_workload=max_workload,
+        max_timestep=max_timestep, 
+        max_function=max_function,
+        max_server=max_server,
+        cluster_size=cluster_size,
+        user_cpu_per_server=user_cpu_per_server,
+        user_memory_per_server=user_memory_per_server,
+        keep_alive_window_per_server=keep_alive_window_per_server,
+        cpu_cap_per_function=cpu_cap_per_function,
+        memory_cap_per_function=memory_cap_per_function,
+        interval=interval,
+        timeout_penalty=timeout_penalty
+    )
 
     # Start training
     observation_dim = 1 + 2 * max_server + 8 * max_function
@@ -398,8 +464,8 @@ if __name__ == "__main__":
         value_loss_coef=value_loss_coef,
         entropy_coef=entropy_coef,
         model_save_path=model_save_path,
-        save_plot=False,
-        show_plot=True,
+        save_plot=True,
+        show_plot=False,
     )
 
     print("")
