@@ -201,7 +201,7 @@ if __name__ == "__main__":
     azure_file_path = "azurefunctions-dataset2019/"
     max_workload = 10
     max_function = 100
-    max_timestep = 600
+    max_timestep = 60
     max_load_per_trace = 10000
     trigger_dist = {
         "http": 0.359,
