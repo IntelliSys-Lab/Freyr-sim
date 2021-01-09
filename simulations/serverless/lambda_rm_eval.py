@@ -36,7 +36,7 @@ def lambda_rm_eval(
     env.seed(114514) # Reproducible, policy gradient has high variance
     
     # Set up policy gradient agent
-    pg_agent = PPO2Agent(
+    agent = PPO2Agent(
         observation_dim=env.observation_dim,
         action_dim=env.action_dim,
         hidden_dims=hidden_dims,
@@ -49,7 +49,7 @@ def lambda_rm_eval(
     )
 
     # Restore checkpoint model
-    pg_agent.load(checkpoint_path)
+    agent.load(checkpoint_path)
     
     # Trends recording
     reward_trend = []
@@ -62,8 +62,8 @@ def lambda_rm_eval(
     
     # Start random provision
     for episode in range(max_episode):
-        observation = env.reset()
-        pg_agent.reset()
+        observation, mask = env.reset()
+        agent.reset()
 
         actual_time = 0
         system_time = 0
@@ -74,8 +74,8 @@ def lambda_rm_eval(
         episode_done = False
         while episode_done is False:
             actual_time = actual_time + 1
-            action, value_pred, log_prob = pg_agent.choose_action(observation)
-            next_observation, reward, done, info = env.step(action)
+            action, value_pred, log_prob = agent.choose_action(observation, mask)
+            next_observation, next_mask, reward, done, info = env.step(action)
 
             if system_time < info["system_time"]:
                 system_time = info["system_time"]
@@ -99,6 +99,7 @@ def lambda_rm_eval(
                 logger.info("**********")
                 logger.info("**********")
                 logger.info("")
+                logger.info("Running {}".format(rm))
                 logger.info("Episode {} finished after:".format(episode))
                 logger.info("{} actual timesteps".format(actual_time))
                 logger.info("{} system timesteps".format(system_time))
@@ -139,6 +140,7 @@ def lambda_rm_eval(
                 episode_done = True
             
             observation = next_observation
+            mask = next_mask
     
     # Plot each episode 
     plotter = Plotter()

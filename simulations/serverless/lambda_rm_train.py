@@ -344,6 +344,7 @@ def lambda_rm_train(
         logger.info("**********")
         logger.info("**********")
         logger.info("")
+        logger.info("Running {}".format(rm))
         logger.info("Episode {} finished after:".format(episode))
         logger.info("{} actual timesteps".format(actual_time))
         logger.info("{} system timesteps".format(system_time))
@@ -397,7 +398,7 @@ if __name__ == "__main__":
 
     # Training paramters
     workload_type = "azure"
-    max_workload = 10
+    max_workload = 1
     max_episode = 1000
     hidden_dims = [32, 16]
     learning_rate = 0.001
