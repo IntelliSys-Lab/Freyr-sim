@@ -1,5 +1,10 @@
 import numpy as np
 import pandas as pd
+import os
+import stat
+import sys
+from glob import glob
+import params
 
 
 #
@@ -16,11 +21,14 @@ def load_from_azure(
     n_memory_files = ["01", "02", "03", "04", "05", "06", "07", \
         "08", "09", "10", "11", "12"]
     memory_prefix = "app_memory_percentiles.anon.d"
-
+    
     for n in n_memory_files:
-        df = pd.read_csv(azure_file_path + memory_prefix + n + csv_suffix)
-        for _, row in df.iterrows():
-            memory_traces.append(row)
+        df = pd.read_csv(azure_file_path + memory_prefix + n + csv_suffix, index_col="HashApp")
+        memory_traces.append(df)
+
+    memory_df = pd.concat(memory_traces)
+    memory_df = memory_df[~memory_df.index.duplicated()]
+    memory_dict = memory_df.to_dict('index')
 
     # Duration traces
     duration_traces = []
@@ -29,9 +37,12 @@ def load_from_azure(
     duration_prefix = "function_durations_percentiles.anon.d"
 
     for n in n_duration_files:
-        df = pd.read_csv(azure_file_path + duration_prefix + n + csv_suffix)
-        for _, row in df.iterrows():
-            duration_traces.append(row)
+        df = pd.read_csv(azure_file_path + duration_prefix + n + csv_suffix, index_col="HashFunction")
+        duration_traces.append(df)
+
+    duration_df = pd.concat(duration_traces)
+    duration_df = duration_df[~duration_df.index.duplicated()]
+    duration_dict = duration_df.to_dict('index')
 
     # Invocation traces
     invocation_traces = []
@@ -40,219 +51,64 @@ def load_from_azure(
     invocation_prefix = "invocations_per_function_md.anon.d"
 
     for n in n_invocation_files:
-        df = pd.read_csv(azure_file_path + invocation_prefix + n + csv_suffix)
-        for _, row in df.iterrows():
-            invocation_traces.append(row)
+        df = pd.read_csv(azure_file_path + invocation_prefix + n + csv_suffix, index_col="HashFunction")
+        invocation_traces.append(df)
 
-    return memory_traces, duration_traces, invocation_traces
+    invocation_df = pd.concat(invocation_traces)
+    invocation_df = invocation_df[~invocation_df.index.duplicated()]
+    invocation_dict = invocation_df.to_dict('index')
 
+    return memory_dict, duration_dict, invocation_dict
 
-def characterize_memory_dist(
-    memory_traces,
-    max_memory=1536,
-    interval=128
-):
-    # Memory levels: e.g. max_memory=1536, interval=128
-    # [0, 128), [128, 256), [256, 384), ..., [1408, 1536]
-    n_levels = int(max_memory / interval)
-    dist = []
-    for _ in range(n_levels):
-        dist.append([])
-
-    for trace in memory_traces:
-        dist_index = int(trace["AverageAllocatedMb"] / interval)
-        if dist_index >= n_levels:
-            dist_index = n_levels - 1 
-
-        dist[dist_index].append(trace)
-
-    return dist
-
-
-def sample_from_memory_dist(
-    memory_dist,
-    n_apps=4
-):
-    # Calculate total number of applications
-    total_apps = 0
-    for level in memory_dist:
-        total_apps = total_apps + len(level)
-
-    # Calculate sampling number of each level, at least one sample
-    sample_num_list = []
-    for level in memory_dist:
-        sample_num = int(n_apps * len(level) / total_apps)
-        if sample_num < 1:
-            sample_num = 1
-
-        sample_num_list.append(sample_num)
-
-    # Random sample for each level
-    app_hash_list = []
-    for i in range(len(sample_num_list)):
-        app_index_list = np.random.choice(
-            a=len(memory_dist[i]), 
-            size=sample_num_list[i],
-            replace=False
-        )
-
-        for index in app_index_list:
-            app_hash_list.append(memory_dist[i][index]["HashApp"])
-
-    return app_hash_list
-
-def save_sampled_traces(
-    memory_traces,
-    duration_traces,
-    invocation_traces,
-    app_hash_list,
-    max_timestep=60,
-    save_file_path="azurefunctions-dataset2019/"
-):
-    # Gather information and save as csv files
-    sampled_memory_traces = []
-    sampled_duration_traces = []
-    sampled_invocation_traces = []
-
-    # First visit, which is time-efficient
-    for app_hash in app_hash_list:
-        # Save sampled duration traces
-        function_hash_duration_list = []
-        for trace in duration_traces:
-            if app_hash == trace["HashApp"] and \
-                trace["HashFunction"] not in function_hash_duration_list:
-                function_hash_duration_list.append(trace["HashFunction"])
-                sampled_duration_traces.append(trace)
-        
-        # Save sampled invocation traces
-        function_hash_invocation_list = []
-        for trace in invocation_traces:
-            if app_hash == trace["HashApp"] and \
-                trace["HashFunction"] not in function_hash_invocation_list:
-                function_hash_invocation_list.append(trace["HashFunction"])
-                sampled_invocation_traces.append(trace)
-
-        # Save sampled memory traces
-        if len(function_hash_duration_list) == 0 or \
-            len(function_hash_invocation_list) == 0: # Empty application
-            break
-        else:
-            for trace in memory_traces:
-                if app_hash == trace["HashApp"]:
-                    sampled_memory_traces.append(trace)
-                    break
-    
-    # Regularize duration and invocation traces
-    if len(sampled_duration_traces) != len(sampled_invocation_traces):
-        if len(sampled_duration_traces) < len(sampled_invocation_traces):
-            regularized_sampled_invocation_traces = []
-
-            for invocation_trace in sampled_invocation_traces:
-                for duration_trace in sampled_duration_traces:
-                    if invocation_trace["HashFunction"] == duration_trace["HashFunction"]:
-                        regularized_sampled_invocation_traces.append(invocation_trace)
-                        break
-
-            sampled_invocation_traces = regularized_sampled_invocation_traces
-
-        elif len(sampled_duration_traces) > len(sampled_invocation_traces):
-            regularized_sampled_duration_traces = []
-
-            for duration_trace in sampled_duration_traces:
-                for invocation_trace in sampled_invocation_traces:
-                    if duration_trace["HashFunction"] == invocation_trace["HashFunction"]:
-                        regularized_sampled_duration_traces.append(duration_trace)
-                        break
-        
-            sampled_duration_traces = regularized_sampled_duration_traces
-
-    # Regularize memory traces 
-    regularized_sampled_memory_traces = []
-
-    for memory_trace in sampled_memory_traces:
-        for duration_trace in sampled_duration_traces:
-            if memory_trace["HashApp"] == duration_trace["HashApp"]:
-                regularized_sampled_memory_traces.append(memory_trace)
-                break
-        
-    sampled_memory_traces = regularized_sampled_memory_traces
-
-    # Export as CSV files
-    pd.DataFrame(sampled_memory_traces).to_csv(
-        save_file_path + "sampled_memory_traces.csv",
-        index=False
-    )
-    pd.DataFrame(sampled_duration_traces).to_csv(
-        save_file_path + "sampled_duration_traces.csv",
-        index=False
-    )
-
-    drop_list = [] # Drop timesteps that are beyond max timestep
-    for i in range(max_timestep, 1440):
-        drop_list.append("{}".format(i+1))
-
-    pd.DataFrame(sampled_invocation_traces).drop(drop_list, axis=1, inplace=True).to_csv(
-        save_file_path + "sampled_invocation_traces.csv",
-        index=False
-    )
-    
 #
 # Sample from trigger distribution 
 #
 
 def sample_from_trigger_dist(
-    memory_traces,
-    duration_traces,
-    invocation_traces,
+    memory_dict,
+    duration_dict,
+    invocation_dict,
     trigger_dist,
-    max_function_num=50,
+    max_function=50,
+    min_load_per_trace=300,
     max_load_per_trace=600,
     max_timestep=60,
-    save_file_path="azurefunctions-dataset2019/"
+    save_file_path="azurefunctions-dataset2019/",
+    save_file_id=""
 ):
-    sampled_memory_traces = []
-    sampled_duration_traces = []
-    sampled_invocation_traces = []
+    sampled_memory_traces = {}
+    sampled_duration_traces = {}
+    sampled_invocation_traces = {}
 
     # Classify based on trigger types
     trigger_dict = {}
 
-    for trace in invocation_traces:
+    for func_hash in invocation_dict.keys():
+        trace = invocation_dict[func_hash]
         trigger = trace["Trigger"]
         if trigger not in trigger_dict:
             trigger_dict[trigger] = []
 
+        trace["HashFunction"] = func_hash
         trigger_dict[trigger].append(trace)
 
     # Random sample
-    sample_dict = {}
-    sample_dict["HashApp"] = []
-    sample_dict["HashFunction"] = []
-
     for trigger in trigger_dict.keys():
-        sample_dict[trigger] = []
-        
         # Apply load limit
+        index_list = []
+
         done = False
         while done is False:
-            index_list = np.random.choice(
-                a=len(trigger_dict[trigger]), 
-                size=int(max_function_num * trigger_dist[trigger])+1,
-                replace=False
-            )
-
-            exceed_limit = False
+            index = np.random.randint(len(trigger_dict[trigger]))
             invoke_list = []
-            for index in index_list:
-                trace = trigger_dict[trigger][index]
-                for timestep in range(max_timestep):
-                    invoke_list.append(int(trace["{}".format(timestep+1)]))
+            trace = trigger_dict[trigger][index]
+            for timestep in range(max_timestep):
+                invoke_list.append(int(trace["{}".format(timestep+1)]))
 
-                if np.sum(invoke_list) > max_load_per_trace:
-                    exceed_limit = True
-                    break
+            if np.sum(invoke_list) <= max_load_per_trace and np.sum(invoke_list) >= min_load_per_trace and index not in index_list:
+                index_list.append(index)
 
-            if exceed_limit is False:
+            if len(index_list) >= int(max_function * trigger_dist[trigger]) + 1:
                 done = True
 
         for index in index_list:
@@ -260,110 +116,96 @@ def sample_from_trigger_dist(
             func_hash = trace["HashFunction"]
             app_hash = trace["HashApp"]
 
-            # Application hash
-            if app_hash not in sample_dict["HashApp"]:
-                sample_dict["HashApp"].append(app_hash)
-
-            # Function hash
-            if func_hash not in sample_dict["HashFunction"]:
-                sample_dict["HashFunction"].append(func_hash)
-
             # Save sampled invocation traces
-            sampled_invocation_traces.append(trace)
+            sampled_invocation_traces[func_hash] = trace
 
-    # Save sampled memory and duration traces
-    app_hash_list = []
-    for trace in memory_traces:
-        app_hash = trace["HashApp"]
-        if app_hash in sample_dict["HashApp"] and app_hash not in app_hash_list:
-            sampled_memory_traces.append(trace)
-            app_hash_list.append(app_hash)
-
-    app_hash_list = []
-    func_hash_list = []
-    for trace in duration_traces:
-        app_hash = trace["HashApp"]
-        func_hash = trace["HashFunction"]
-        if (app_hash in sample_dict["HashApp"] and app_hash not in app_hash_list) and \
-            (func_hash in sample_dict["HashFunction"] and func_hash not in func_hash_list):
-            sampled_duration_traces.append(trace)
-            app_hash_list.append(app_hash)
-            func_hash_list.append(func_hash)
+    # Save sampled duration traces
+    for func_hash in sampled_invocation_traces.keys():
+        if func_hash in duration_dict:
+            trace = duration_dict[func_hash]
+            trace["HashFunction"] = func_hash
+            sampled_duration_traces[func_hash] = trace
 
     # Regularize duration and invocation traces
-    if len(sampled_duration_traces) < len(sampled_invocation_traces):
-        regularized_sampled_invocation_traces = []
+    while len(sampled_duration_traces) != len(sampled_invocation_traces):
+        if len(sampled_duration_traces) < len(sampled_invocation_traces):
+            redundant_list = []
+            for func_hash in sampled_invocation_traces.keys():
+                if func_hash not in sampled_duration_traces:
+                    redundant_list.append(func_hash)
 
-        for invocation_trace in sampled_invocation_traces:
-            for duration_trace in sampled_duration_traces:
-                if invocation_trace["HashFunction"] == duration_trace["HashFunction"]:
-                    regularized_sampled_invocation_traces.append(invocation_trace)
-                    break
+            for func_hash in redundant_list:
+                sampled_invocation_traces.pop(func_hash)
 
-        sampled_invocation_traces = regularized_sampled_invocation_traces
-    elif len(sampled_duration_traces) > len(sampled_invocation_traces):
-        regularized_sampled_duration_traces = []
+        elif len(sampled_duration_traces) > len(sampled_invocation_traces):
+            redundant_list = []
+            for func_hash in sampled_duration_traces.keys():
+                if func_hash not in sampled_invocation_traces:
+                    redundant_list.append(func_hash)
+                
+                for func_hash in redundant_list:
+                    sampled_duration_traces.pop(func_hash)
 
-        for duration_trace in sampled_duration_traces:
-            for invocation_trace in sampled_invocation_traces:
-                if duration_trace["HashFunction"] == invocation_trace["HashFunction"]:
-                    regularized_sampled_duration_traces.append(duration_trace)
-                    break
-    
-        sampled_duration_traces = regularized_sampled_duration_traces
+    # Save sampled memory traces 
+    redundant_list = []
+    for func_hash in sampled_duration_traces.keys():
+        app_hash = sampled_duration_traces[func_hash]["HashApp"]
+        if app_hash not in memory_dict:
+            redundant_list.append(func_hash)
+        else:
+            trace = memory_dict[app_hash]
+            trace["HashApp"] = app_hash
+            sampled_memory_traces[app_hash] = trace
 
-    # Regularize memory traces 
-    if len(sampled_memory_traces) < len(sampled_duration_traces):
-        memory_app_hash_list = []
-        for memory_trace in sampled_memory_traces:
-            memory_app_hash_list.append(memory_trace["HashApp"])
-
-        lack_app_hash_list = []
-        for duration_trace in sampled_duration_traces:
-            if duration_trace["HashApp"] not in memory_app_hash_list:
-                lack_app_hash_list.append(duration_trace["HashApp"])
-
-        for trace in memory_traces:
-            if trace["HashApp"] in lack_app_hash_list:
-                sampled_memory_traces.append(trace)
-
-    elif len(sampled_memory_traces) > len(sampled_duration_traces):
-        regularized_sampled_memory_traces = []
-        for duration_trace in sampled_duration_traces:
-            for memory_trace in sampled_memory_traces:
-                if duration_trace["HashApp"] == memory_trace["HashApp"]:
-                    regularized_sampled_memory_traces.append(memory_trace)
-                    break
-            
-        sampled_memory_traces = regularized_sampled_memory_traces
+    for func_hash in redundant_list:
+        sampled_invocation_traces.pop(func_hash)
+        sampled_duration_traces.pop(func_hash)
 
     # Write to CSV
-    new_memory_df = pd.DataFrame(sampled_memory_traces)
-    new_duration_df = pd.DataFrame(sampled_duration_traces)
+    new_memory_df = pd.DataFrame.from_records(list(sampled_memory_traces.values()))
+    new_duration_df = pd.DataFrame.from_records(list(sampled_duration_traces.values()))
     drop_list = [] # Drop timesteps that are beyond max timestep
     for i in range(max_timestep, 1440):
         drop_list.append("{}".format(i+1))
-    new_invocation_df = pd.DataFrame(sampled_invocation_traces).drop(drop_list, axis=1)
+    new_invocation_df = pd.DataFrame.from_records(list(sampled_invocation_traces.values())).drop(drop_list, axis=1)
 
     new_memory_df.to_csv(
-        save_file_path + "sampled_memory_traces.csv",
+        save_file_path + "sampled_memory_traces_{}.csv".format(save_file_id),
         index=False
     )
     new_duration_df.to_csv(
-        save_file_path + "sampled_duration_traces.csv",
+        save_file_path + "sampled_duration_traces_{}.csv".format(save_file_id),
         index=False
     )
     new_invocation_df.to_csv(
-        save_file_path + "sampled_invocation_traces.csv",
+        save_file_path + "sampled_invocation_traces_{}.csv".format(save_file_id),
         index=False
     )
+
+#
+# Clean old sample files
+#
+
+def clean_old_samples(
+    dir_name="azurefunctions-dataset2019/",
+    file_pattern="sampled_*.csv"
+):
+    for file_name in glob(os.path.join(dir_name, file_pattern)):
+        try:
+            os.remove(file_name)
+        except EnvironmentError:
+            print("Demand permission to {}".format(file_name))
+            os.chmod(file_name, stat.S_IWRITE)
+            os.remove(file_name)
 
 
 if __name__ == "__main__":
     azure_file_path = "azurefunctions-dataset2019/"
-    # n_apps = 10
-    max_function_num = 50
-    max_timestep = 60
+    max_workload = 1
+    max_function = 50
+    max_timestep = 120
+    min_load_per_trace = 10
+    max_load_per_trace = 1000
     trigger_dist = {
         "http": 0.359,
         "queue": 0.335,
@@ -374,39 +216,27 @@ if __name__ == "__main__":
         "others": 0.01
     }
 
+    print("Clean old sample files...")
+    clean_old_samples(dir_name=azure_file_path, file_pattern="sampled_*.csv")
+
     print("Loading Azure Functions traces...")
-    memory_traces, duration_traces, invocation_traces = load_from_azure(azure_file_path)
+    memory_dict, duration_dict, invocation_dict = load_from_azure(azure_file_path)
     
-    # print("Characterizing memory distribution...")
-    # dist = characterize_memory_dist(
-    #     memory_traces,
-    #     max_memory=1536,
-    #     interval=192
-    # )
-
-    # print("Sampling from distribution...")
-    # app_hash_list = sample_from_memory_dist(dist, n_apps)
-
-    # print("Start saving...")
-    # save_sampled_traces(
-    #     memory_traces=memory_traces,
-    #     duration_traces=duration_traces,
-    #     invocation_traces=invocation_traces,
-    #     app_hash_list=app_hash_list,
-    #     max_timestep=60,
-    #     save_file_path=azure_file_path
-    # )
-
     print("Sampling from trigger distribution...")
-    sample_from_trigger_dist(
-        memory_traces=memory_traces,
-        duration_traces=duration_traces,
-        invocation_traces=invocation_traces,
-        trigger_dist=trigger_dist,
-        max_function_num=max_function_num,
-        max_timestep=max_timestep,
-        save_file_path="azurefunctions-dataset2019/"
-    )
+    for i in range(max_workload):
+        print("Sampling {} workload...".format(i))
+        sample_from_trigger_dist(
+            memory_dict=memory_dict,
+            duration_dict=duration_dict,
+            invocation_dict=invocation_dict,
+            trigger_dist=trigger_dist,
+            max_function=max_function,
+            max_timestep=max_timestep,
+            min_load_per_trace=min_load_per_trace,
+            max_load_per_trace=max_load_per_trace,
+            save_file_path="azurefunctions-dataset2019/",
+            save_file_id=i
+        )
 
     print("Sampling finished!")
-
+    

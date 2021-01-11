@@ -29,11 +29,13 @@ class PPO2Agent():
         self,
         observation_dim,
         action_dim,
-        hidden_dims=[64,32],
+        hidden_dims=[32, 16],
         learning_rate=0.001,
         discount_factor=1,
         ppo_clip=0.2,
-        ppo_steps=5
+        ppo_epoch=5,
+        value_loss_coef=0.5,
+        entropy_coef=0.01
     ):
         self.observation_dim = observation_dim
         self.action_dim = action_dim
@@ -42,17 +44,11 @@ class PPO2Agent():
         self.gamma = discount_factor
 
         self.ppo_clip = ppo_clip
-        self.ppo_steps = ppo_steps
+        self.ppo_epoch = ppo_epoch
+        self.value_loss_coef = value_loss_coef
+        self.entropy_coef = entropy_coef
 
-        self.observation_history = []
-        self.action_history = []
-        self.value_history = []
-        self.log_prob_history = []
-        self.reward_history = []
-        
         self.model = self.build_model()
-
-        self.loss = nn.CrossEntropyLoss()
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr= self.learning_rate)
 
         self.eps = np.finfo(np.float32).eps.item()
@@ -62,87 +58,83 @@ class PPO2Agent():
             observation_dim=self.observation_dim,
             hidden_dims=self.hidden_dims,
             action_dim=self.action_dim,
-            is_actor=True
         )
 
         critic = MLP(
             observation_dim=self.observation_dim,
             hidden_dims=self.hidden_dims,
             action_dim=1,
-            is_actor=False
         )
 
         ac_model = ActorCritic(actor, critic)
 
         return ac_model
 
-    def choose_action(self, observation):
+    def choose_action(self, observation, mask):
         self.model.eval()
         
-        action_pred, value_pred = self.model(torch.Tensor(observation[np.newaxis, :]))
+        action_pred, value_pred = self.model(observation)
+        # print("action_pred before mask: ")
+        # print(action_pred)
+        # print("mask: ")
+        # print(mask)
+        action_pred = action_pred + mask
+        # print("action_pred after mask: ")
+        # print(action_pred)
         action_prob = F.softmax(action_pred, dim=-1)
         dist = Categorical(action_prob)
-        
         action = dist.sample()
         log_prob = dist.log_prob(action)
+        dist_entropy = dist.entropy().mean()
             
         return action, value_pred, log_prob
 
-    def record_trajectory(
-        self, 
-        observation, 
-        action, 
-        value, 
-        reward, 
-        log_prob
+    def update(
+        self,
+        observation_history,
+        mask_history,
+        action_history,
+        reward_history,
+        value_history,
+        log_prob_history
     ):
-        self.observation_history.append(observation.unsqueeze(0))
-        self.action_history.append(action.unsqueeze(0))
-        self.value_history.append(value)
-        self.log_prob_history.append(log_prob.unsqueeze(0))
-        self.reward_history.append(reward)
-
-    def propagate(self):
         self.model.train()
-        
-        # Discount rewards
-        reward_history = self.discount_rewards()
 
-        # Concatenate trajectory
-        observation_history = torch.cat(self.observation_history, dim=0)
-        action_history = torch.cat(self.action_history, dim=0)
-        value_history = torch.cat(self.value_history).squeeze()
-        log_prob_history = torch.cat(self.log_prob_history, dim=0)
+        # Discount rewards
+        reward_history = self.discount_rewards(reward_history)
 
         # Calculate advantage
         advantage = reward_history - value_history
         
         # Detach trajectory 
         observation_history = observation_history.detach()
+        mask_history = mask_history.detach()
         action_history = action_history.detach()
         log_prob_history = log_prob_history.detach()
         advantage = advantage.detach()
         reward_history = reward_history.detach()
+
+        # print("History after detached: ")
+        # print("observation_history: {}".format(observation_history.shape))
+        # print("mask_history: {}".format(mask_history.shape))
+        # print("action_history shape: {}".format(action_history.shape))
+        # print("reward_history shape: {}".format(reward_history.shape))
+        # print("value_history shape: {}".format(value_history.shape))
+        # print("log_prob_history shape: {}".format(log_prob_history.shape))
         
-        loss = 0
-        for _ in range(self.ppo_steps):
+        # PPO parameters update
+        loss_epoch = 0
+        for _ in range(self.ppo_epoch):
             # Get new log probs of actions for all input states
-            new_log_prob_history = []
-            new_value_history = []
-            for i in range (observation_history.size(0)):
-                observation_i = observation_history[i, :]
-                action_pred, value_pred = self.model(observation_i)
-                action_prob = F.softmax(action_pred, dim=-1)
-                dist = Categorical(action_prob)
+            action_pred_all, value_pred_all = self.model(observation_history)
+            action_pred_all = action_pred_all + mask_history
+            action_prob_all = F.softmax(action_pred_all, dim=-1)
+            dist = Categorical(action_prob_all)
+            dist_entropy = dist.entropy().mean()
 
-                # New log probs using old actions
-                new_log_prob = dist.log_prob(action_history[i])
-
-                new_log_prob_history.append(new_log_prob.unsqueeze(0))
-                new_value_history.append(value_pred)
-
-            new_log_prob_history = torch.cat(new_log_prob_history, dim=0)
-            new_value_history = torch.cat(new_value_history).squeeze()
+            # New log probs and values using old actions
+            new_log_prob_history = dist.log_prob(action_history)
+            new_value_history = value_pred_all.squeeze()
 
             policy_ratio = (new_log_prob_history - log_prob_history).exp()
             policy_loss_1 = policy_ratio * advantage
@@ -154,38 +146,35 @@ class PPO2Agent():
 
             policy_loss = - torch.min(policy_loss_1, policy_loss_2).mean()
             value_loss = F.smooth_l1_loss(reward_history, new_value_history).mean()
-            loss = loss + policy_loss.item() + value_loss.item()
+            loss = policy_loss + value_loss * self.value_loss_coef - dist_entropy * self.entropy_coef
 
             self.optimizer.zero_grad()
-            policy_loss.backward()
-            value_loss.backward()
+            loss.backward()
             self.optimizer.step()
+            loss_epoch = loss_epoch + loss.item()
+            
+        loss_epoch = loss_epoch / self.ppo_epoch
 
-        loss = loss / self.ppo_steps
-        return loss
+        return loss_epoch
     
     def norm(self, x):
         x = (x - x.mean()) / (x.std() + self.eps)
         return x
 
-    def discount_rewards(self):
+    def discount_rewards(self, reward_history):
         discounted_rewards = []
         tmp = 0
-        for reward in self.reward_history[::-1]:
+        for reward in reward_history[::-1]:
             tmp = tmp * self.gamma + reward
             discounted_rewards.append(tmp)
         
         discounted_rewards = torch.Tensor(discounted_rewards[::-1])
-        discounted_rewards = self.norm(discounted_rewards)
+        result = self.norm(discounted_rewards)
 
-        return discounted_rewards
+        return result
     
     def reset(self):
-        self.observation_history = []
-        self.action_history = []
-        self.value_history = []
-        self.log_prob_history = []
-        self.reward_history = []
+        pass
 
     def save(self, save_path):
         torch.save(self.model.state_dict(), save_path)

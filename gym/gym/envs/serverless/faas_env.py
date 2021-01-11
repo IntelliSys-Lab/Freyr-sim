@@ -53,7 +53,7 @@ class FaaSEnv(gym.Env):
         #  function_f_decrease_memory,
         #  function_f_increase_memory,
         # ]
-        self.action_dim = 4 * self.profile.get_size() + 1
+        self.action_dim = 4 * self.params.max_function + 1
         
         # Define observation space
         # Observation space size: 1 + 2 * n + 8 * m
@@ -87,31 +87,45 @@ class FaaSEnv(gym.Env):
         #  function_m_memory_direction,
         #  function_m_invoke_num,
         # ]
-        self.observation_dim = 1 + 2 * self.cluster.get_cluster_size() + 8 * self.profile.get_size()
+        self.observation_dim = 1 + 2 * self.params.max_server + 8 * self.params.max_function
     
     #
     # Decode discrete action into resource change
     #
     def decode_action(self, action):
-        function_profile = self.profile.get_function_profile()
-        function_profile_list = list(function_profile.keys())
+        next_timestep = self.timetable.get_timestep(self.system_time)
+        next_timestep_list = list(next_timestep.keys())
+        function_invoke_list = []
+        for i, function_id in enumerate(next_timestep_list):
+            invoke_num = next_timestep[function_id]
+            if invoke_num > 0:
+                function_invoke_list.append(i)
 
         function_index = int(action/4)
-        function_id = function_profile_list[function_index]
-        adjust = 0
-        
-        if action % 4 == 0:
-            resource = "cpu" # CPU
-            adjust = -1 # Decrease one slot
-        elif action % 4 == 1:
-            resource = "cpu" # CPU
-            adjust = 1 # Increase one slot
-        elif action % 4 == 2:
-            resource = "memory" # Memory
-            adjust = -1 # Decrease one slot
-        elif action % 4 == 3:
-            resource = "memory" # Memory
-            adjust = 1 # Increase one slot
+        if function_index not in function_invoke_list: # Implicit invalid action
+            function_id = None
+            resource = None
+            adjust = None
+            print("Exceed function invoke list!")
+            print("action: {}".format(action))
+            print("function_invoke_list len: {}, function_index: {}".format(len(function_invoke_list), function_index))
+            sys.exit()
+        else:
+            function_id = next_timestep_list[function_index]
+            adjust = 0
+            
+            if action % 4 == 0:
+                resource = "cpu" # CPU
+                adjust = -1 # Decrease one slot
+            elif action % 4 == 1:
+                resource = "cpu" # CPU
+                adjust = 1 # Increase one slot
+            elif action % 4 == 2:
+                resource = "memory" # Memory
+                adjust = -1 # Decrease one slot
+            elif action % 4 == 3:
+                resource = "memory" # Memory
+                adjust = 1 # Increase one slot
         
         return function_id, resource, adjust
         
@@ -135,18 +149,27 @@ class FaaSEnv(gym.Env):
                     for member_id in sequence:
                         function_profile[member_id].set_function(new_cpu, new_memory)
             
-            return False
-        
-        if action == self.action_dim - 1: # Explicit invalid action
+            # Always invalid actions
             return False
         else:
-            function_id, resource, adjust = self.decode_action(action)
-            function = function_profile[function_id]
-            if function.validate_resource_adjust(resource, adjust) is True:
-                function.set_resource_adjust(resource, adjust)
-                return True
+            if action == self.action_dim - 1: # Explicit invalid action
+                return False
             else:
-                return False # Implicit invalid action
+                function_id, resource, adjust = self.decode_action(action)
+
+                if function_id is None:
+                    return False # Implicit invalid action
+
+                next_timestep = self.timetable.get_timestep(self.system_time)
+                if next_timestep[function_id] == 0:
+                    return False # Implicit invalid action
+
+                function = function_profile[function_id]
+                if function.validate_resource_adjust(resource, adjust) is True:
+                    function.set_resource_adjust(resource, adjust)
+                    return True
+                else:
+                    return False # Implicit invalid action
 
     #            
     # Update the cluster
@@ -246,36 +269,73 @@ class FaaSEnv(gym.Env):
         function_profile = self.profile.get_function_profile()
         next_timestep = self.timetable.get_timestep(self.system_time)
 
-        observation = []
+        observation = np.zeros(self.observation_dim)
+
+        # Init mask, always unmask action void
+        mask = np.ones(self.action_dim) * -10e8
+        mask[-1] = 0
 
          # Number of undone requests
-        observation.append(self.request_record.get_undone_size())
+        observation[0] = self.request_record.get_undone_size()
 
         # Available cpu and memory per server
-        for server in self.cluster.get_server_pool():
+        base_server = 0
+        for i, server in enumerate(self.cluster.get_server_pool()):
             available_cpu, available_memory = server.resource_manager.get_resources_available()
-            observation.append(available_cpu)
-            observation.append(available_memory)
+            observation[base_server + 2*i + 1] = available_cpu
+            observation[base_server + 2*i + 2] = available_memory
 
         # Information of functions
-        for function_id in function_profile.keys():
-            function = function_profile[function_id]
-            
-            observation.append(self.request_record.get_avg_interval_per_function(function_id))
-            observation.append(self.request_record.get_avg_completion_time_per_function(function.function_id))
-            observation.append(self.request_record.get_is_cold_start_per_function(function_id))
-            observation.append(function.get_cpu())
-            observation.append(function.get_memory())
-            observation.append(function.get_resource_adjust_direction("cpu"))
-            observation.append(function.get_resource_adjust_direction("memory"))
-            if next_timestep is not None:
-                observation.append(next_timestep[function_id])
-            else:
-                observation.append(0)
+        if next_timestep is not None:
+            base_function = 2*self.params.max_server
+            for i, function_id in enumerate(next_timestep.keys()):
+                if next_timestep[function_id] > 0:
+                    function = function_profile[function_id]
+                    cpu_cap_per_function = function.params.cpu_cap_per_function
+                    cpu_least_hint = function.params.cpu_least_hint
+                    memory_cap_per_function = function.params.memory_cap_per_function
+                    memory_least_hint = function.params.memory_least_hint
+                    
+                    avg_interval = self.request_record.get_avg_interval_per_function(function_id)
+                    avg_completion_time = self.request_record.get_avg_completion_time_per_function(function.function_id)
+                    is_cold_start = self.request_record.get_is_cold_start_per_function(function_id)
+                    cpu = function.get_cpu()
+                    memory = function.get_memory()
+                    cpu_adjust_direction = function.get_resource_adjust_direction("cpu")
+                    memory_adjust_direction = function.get_resource_adjust_direction("memory")
+                    invoke_num = next_timestep[function_id]
+                    
+                    observation[base_function + 8*i + 1] = avg_interval
+                    observation[base_function + 8*i + 2] = avg_completion_time
+                    observation[base_function + 8*i + 3] = is_cold_start
+                    observation[base_function + 8*i + 4] = cpu
+                    observation[base_function + 8*i + 5] = memory
+                    observation[base_function + 8*i + 6] = cpu_adjust_direction
+                    observation[base_function + 8*i + 7] = memory_adjust_direction
+                    observation[base_function + 8*i + 8] = invoke_num
+
+                    # Unmask action cpu access
+                    if cpu_adjust_direction == 0: 
+                        mask[4*i + 0] = 0 # Decrease one CPU slot
+                        mask[4*i + 1] = 0 # Increase one CPU slot
+                    elif cpu_adjust_direction == -1 and cpu > cpu_least_hint:
+                        mask[4*i + 0] = 0 # Decrease one CPU slot
+                    elif cpu_adjust_direction == 1 and cpu < cpu_cap_per_function:
+                        mask[4*i + 1] = 0 # Increase one CPU slot
+
+                    # Unmask action memory access
+                    if memory_adjust_direction == 0: 
+                        mask[4*i + 2] = 0 # Decrease one memory slot
+                        mask[4*i + 3] = 0 # Increase one memory slot
+                    if memory_adjust_direction == -1 and memory > memory_least_hint:
+                        mask[4*i + 2] = 0 # Decrease one memory slot
+                    elif memory_adjust_direction == 1 and memory < memory_cap_per_function:
+                        mask[4*i + 3] = 0 # Increase one memory slot
+
+        observation = torch.Tensor(observation).unsqueeze(0)
+        mask = torch.Tensor(mask).unsqueeze(0)
         
-        observation = torch.Tensor(np.array(observation))
-        
-        return observation
+        return observation, mask
     #
     # Calculate reward for current timestep
     #
@@ -288,8 +348,8 @@ class FaaSEnv(gym.Env):
         # Reward of completion time
         reward = reward + -self.request_record.get_current_completion_time(self.system_time)
 
-        # Discounted by throughput
-        throughput = np.max([self.get_function_throughput(), 1])
+        # Discounted by square root of throughput
+        throughput = np.max([np.sqrt(self.get_function_throughput()), 1])
         reward = reward / throughput
             
         return reward
@@ -363,7 +423,7 @@ class FaaSEnv(gym.Env):
                 function.reset_resource_adjust_direction()
             
         # Get observation for next state
-        observation = self.get_observation()
+        observation, mask = self.get_observation()
         
         # Done?
         done = self.get_done()
@@ -371,7 +431,7 @@ class FaaSEnv(gym.Env):
         # Return info
         info = self.get_info()
         
-        return observation, reward, done, info
+        return observation, mask, reward, done, info
     
     def reset(self):
         self.system_time = 0
@@ -381,9 +441,9 @@ class FaaSEnv(gym.Env):
         self.request_record.reset()
         self.resource_utils_record.reset()
         
-        observation = self.get_observation()
+        observation, mask = self.get_observation()
         
-        return observation
+        return observation, mask
     
     
     

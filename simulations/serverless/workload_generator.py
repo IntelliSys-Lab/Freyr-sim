@@ -6,6 +6,7 @@ import numpy as np
 import gym
 from gym.envs.serverless.faas_utils import Function, Profile, Timetable
 from gym.envs.serverless.faas_params import FunctionParameters, TimetableParameters
+import params
 
 
 class WorkloadGenerator():
@@ -173,14 +174,20 @@ class WorkloadGenerator():
     
     def azure_params(
         self,
-        azure_file_path="azurefunctions-dataset2019/",
-        memory_traces_file="sampled_memory_traces.csv",
-        duration_traces_file="sampled_duration_traces.csv",
-        invocation_traces_file="sampled_invocation_traces.csv"
+        max_timestep,
+        azure_file_path,
+        memory_traces_file,
+        duration_traces_file,
+        invocation_traces_file
     ):
         memory_traces = pd.read_csv(azure_file_path + memory_traces_file)
         duration_traces = pd.read_csv(azure_file_path + duration_traces_file)
         invocation_traces = pd.read_csv(azure_file_path + invocation_traces_file)
+
+        cpu_cap_per_function = params.cpu_cap_per_function
+        memory_cap_per_function = params.memory_cap_per_function
+        # 1536 is the max memory allowed by Azure Functions 
+        level = 1536 / memory_cap_per_function
 
         function_params_dict = {}
 
@@ -195,14 +202,14 @@ class WorkloadGenerator():
         for function_hash in function_params_dict.keys():
             for _, row in memory_traces.iterrows():
                 if row["HashApp"] == function_params_dict[function_hash]["HashApp"]:
-                    function_params_dict[function_hash]["ideal_memory"] = np.clip(int(row["AverageAllocatedMb_pct100"]/192) + 1, 1, 8)
-                    function_params_dict[function_hash]["ideal_cpu"] = np.clip(int(row["AverageAllocatedMb_pct100"]/192) + 1, 1, 8)
+                    function_params_dict[function_hash]["ideal_memory"] = np.clip(int(row["AverageAllocatedMb_pct100"]/level) + 1, 1, cpu_cap_per_function)
+                    function_params_dict[function_hash]["ideal_cpu"] = np.clip(int(row["AverageAllocatedMb_pct100"]/level) + 1, 1, memory_cap_per_function)
                     function_params_dict[function_hash]["memory_least_hint"] = 1
                     function_params_dict[function_hash]["cpu_least_hint"] = 1
-                    function_params_dict[function_hash]["memory_user_defined"] = np.clip(int(row["AverageAllocatedMb_pct1"]/192) + 1, 1, 8)
-                    function_params_dict[function_hash]["cpu_user_defined"] = np.clip(int(row["AverageAllocatedMb_pct1"]/192) + 1, 1, 8)
-                    function_params_dict[function_hash]["memory_cap_per_function"] = 8
-                    function_params_dict[function_hash]["cpu_cap_per_function"] = 8
+                    function_params_dict[function_hash]["memory_user_defined"] = np.clip(int(row["AverageAllocatedMb_pct1"]/level) + 1, 1, cpu_cap_per_function)
+                    function_params_dict[function_hash]["cpu_user_defined"] = np.clip(int(row["AverageAllocatedMb_pct1"]/level) + 1, 1, memory_cap_per_function)
+                    function_params_dict[function_hash]["memory_cap_per_function"] = cpu_cap_per_function
+                    function_params_dict[function_hash]["cpu_cap_per_function"] = memory_cap_per_function
                     break
 
             for _, row in duration_traces.iterrows():
@@ -262,7 +269,7 @@ class WorkloadGenerator():
 
         # Create timetable based on invocation traces
         timetable_params = TimetableParameters(
-            max_timestep=60, 
+            max_timestep=max_timestep, 
             distribution_type="azure",
             azure_invocation_traces=invocation_traces
         )
@@ -430,19 +437,22 @@ class WorkloadGenerator():
         self, 
         default="azure",
         profile_params=None, 
-        timetable_params=None
+        timetable_params=None,
+        max_timestep=600,
+        azure_file_path="azurefunctions-dataset2019/",
+        memory_traces_file="simple_memory_traces.csv",
+        duration_traces_file="simple_duration_traces.csv",
+        invocation_traces_file="simple_invocation_traces.csv"
     ):
         if default == "ensure":
             default_profile_params, default_timetable_params = self.ensure_params()
         elif default == "azure":
             default_profile_params, default_timetable_params = self.azure_params(
-                azure_file_path="azurefunctions-dataset2019/",
-                memory_traces_file="sampled_memory_traces.csv",
-                duration_traces_file="sampled_duration_traces.csv",
-                invocation_traces_file="sampled_invocation_traces.csv"
-                # memory_traces_file="simple_memory_traces.csv",
-                # duration_traces_file="simple_duration_traces.csv",
-                # invocation_traces_file="simple_invocation_traces.csv"
+                max_timestep=max_timestep,
+                azure_file_path=azure_file_path,
+                memory_traces_file=memory_traces_file,
+                duration_traces_file=duration_traces_file,
+                invocation_traces_file=invocation_traces_file
             )
 
         if profile_params is None:

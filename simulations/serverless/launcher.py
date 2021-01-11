@@ -8,7 +8,8 @@ from logger import Logger
 from fixed_rm import fixed_rm
 from greedy_rm import greedy_rm
 from ensure_rm import ensure_rm
-from lambda_rm import lambda_rm_train, lambda_rm_eval
+from lambda_rm_eval import lambda_rm_eval
+import params
 
 
 def launch():
@@ -18,100 +19,79 @@ def launch():
 
     # Generate workload
     workload_generator = WorkloadGenerator()
-    
-    # timetable_params = TimetableParameters(
-    #     max_timestep=60,
-    #     distribution_type="mod",
-    #     mod_factors=[10, 12, 14, 16, 18, 20, 22, 24, 26, 28]
-    # )
-    # timetable_params = TimetableParameters(
-    #     max_timestep=60,
-    #     distribution_type="bernoulli",
-    #     bernoulli_p=0.5
-    # )
-    # timetable_params = TimetableParameters(
-    #     max_timestep=60,
-    #     distribution_type="poisson",
-    #     poisson_mu=0.8
-    # )
-    timetable_params = None # Azure traces
-    
     profile, timetable = workload_generator.generate_workload(
-        # default="ensure",
-        default="azure",
-        timetable_params=timetable_params
+        default=params.workload_type,
+        max_timestep=60,
+        azure_file_path="azurefunctions-dataset2019/",
+        memory_traces_file="sampled_memory_traces_0.csv",
+        duration_traces_file="sampled_duration_traces_0.csv",
+        invocation_traces_file="sampled_invocation_traces_0.csv"
     )
     
     # Set paramters for FaaSEnv
     env_params = EnvParameters(
-        cluster_size=30,
-        user_cpu_per_server=8,
-        user_memory_per_server=8,
-        keep_alive_window_per_server=60,
-        cpu_cap_per_function=8,
-        memory_cap_per_function=8,
-        timeout_penalty=600,
-        interval=1,
+        max_function=params.max_function,
+        max_server=params.max_server,
+        cluster_size=params.cluster_size,
+        user_cpu_per_server=params.user_cpu_per_server,
+        user_memory_per_server=params.user_memory_per_server,
+        keep_alive_window_per_server=params.keep_alive_window_per_server,
+        cpu_cap_per_function=params.cpu_cap_per_function,
+        memory_cap_per_function=params.memory_cap_per_function,
+        timeout_penalty=params.timeout_penalty,
+        interval=params.interval,
     )
     
-    # Start simulations
+    # Define episode
+    episode = 3
+
+    # FixedRM
     fixed_rm(
         profile=profile,
         timetable=timetable,
         env_params=env_params,
-        max_episode=10,
+        max_episode=episode,
         save_plot=True,
         show_plot=False,
         logger_wrapper=logger_wrapper
     )
 
+    # GreedyRM
     greedy_rm(
         profile=profile,
         timetable=timetable,
         env_params=env_params,
-        max_episode=10,
+        max_episode=episode,
         save_plot=True,
         show_plot=False,
         logger_wrapper=logger_wrapper
     )
 
+    # Ensure
     ensure_rm(
         profile=profile,
         timetable=timetable,
         env_params=env_params,
-        max_episode=10,
+        max_episode=episode,
         save_plot=True,
         show_plot=False,
         logger_wrapper=logger_wrapper
     )
 
-    lambda_rm_train(
-        profile=profile,
-        timetable=timetable,
-        env_params=env_params,
-        max_episode=1000,
-        hidden_dims=[32, 16],
-        learning_rate=0.001,
-        discount_factor=1,
-        ppo_clip=0.2,
-        ppo_steps=5,
-        model_save_path="ckpt/best_model.pth",
-        save_plot=True,
-        show_plot=False,
-        logger_wrapper=logger_wrapper
-    )
-
+    # LambdaRM
     lambda_rm_eval(
         profile=profile,
         timetable=timetable,
         env_params=env_params,
-        max_episode=10,
-        hidden_dims=[32, 16],
-        learning_rate=0.001,
-        discount_factor=1,
-        ppo_clip=0.2,
-        ppo_steps=5,
-        checkpoint_path="ckpt/best_model.pth",
+        max_episode=episode,
+        hidden_dims=params.hidden_dims,
+        learning_rate=params.learning_rate,
+        discount_factor=params.discount_factor,
+        ppo_clip=params.ppo_clip,
+        ppo_epoch=params.ppo_epoch,
+        value_loss_coef=params.value_loss_coef,
+        entropy_coef=params.entropy_coef,
+        checkpoint_path=params.model_save_path,
         save_plot=True,
         show_plot=False,
         logger_wrapper=logger_wrapper
