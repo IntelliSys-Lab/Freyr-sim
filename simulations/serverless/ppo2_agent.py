@@ -74,7 +74,13 @@ class PPO2Agent():
         self.model.eval()
         
         action_pred, value_pred = self.model(observation)
+        # print("action_pred before mask: ")
+        # print(action_pred)
+        # print("mask: ")
+        # print(mask)
         action_pred = action_pred + mask
+        # print("action_pred after mask: ")
+        # print(action_pred)
         action_prob = F.softmax(action_pred, dim=-1)
         dist = Categorical(action_prob)
         action = dist.sample()

@@ -95,14 +95,15 @@ class FaaSEnv(gym.Env):
     #
     def decode_action(self, action):
         next_timestep = self.timetable.get_timestep(self.system_time)
+        next_timestep_list = list(next_timestep.keys())
         function_invoke_list = []
-        for function_id in next_timestep.keys():
+        for i, function_id in enumerate(next_timestep_list):
             invoke_num = next_timestep[function_id]
             if invoke_num > 0:
-                function_invoke_list.append(function_id)
+                function_invoke_list.append(i)
 
         function_index = int(action/4)
-        if function_index >= len(function_invoke_list): # Implicit invalid action
+        if function_index not in function_invoke_list: # Implicit invalid action
             function_id = None
             resource = None
             adjust = None
@@ -111,7 +112,7 @@ class FaaSEnv(gym.Env):
             print("function_invoke_list len: {}, function_index: {}".format(len(function_invoke_list), function_index))
             sys.exit()
         else:
-            function_id = function_invoke_list[function_index]
+            function_id = next_timestep_list[function_index]
             adjust = 0
             
             if action % 4 == 0:
@@ -289,8 +290,7 @@ class FaaSEnv(gym.Env):
         # Information of functions
         if next_timestep is not None:
             base_function = 2*self.params.max_server
-            offset_function = 0
-            for function_id in next_timestep.keys():
+            for i, function_id in enumerate(next_timestep.keys()):
                 if next_timestep[function_id] > 0:
                     function = function_profile[function_id]
                     cpu_cap_per_function = function.params.cpu_cap_per_function
@@ -307,35 +307,33 @@ class FaaSEnv(gym.Env):
                     memory_adjust_direction = function.get_resource_adjust_direction("memory")
                     invoke_num = next_timestep[function_id]
                     
-                    observation[base_function + 8*offset_function + 1] = avg_interval
-                    observation[base_function + 8*offset_function + 2] = avg_completion_time
-                    observation[base_function + 8*offset_function + 3] = is_cold_start
-                    observation[base_function + 8*offset_function + 4] = cpu
-                    observation[base_function + 8*offset_function + 5] = memory
-                    observation[base_function + 8*offset_function + 6] = cpu_adjust_direction
-                    observation[base_function + 8*offset_function + 7] = memory_adjust_direction
-                    observation[base_function + 8*offset_function + 8] = invoke_num
+                    observation[base_function + 8*i + 1] = avg_interval
+                    observation[base_function + 8*i + 2] = avg_completion_time
+                    observation[base_function + 8*i + 3] = is_cold_start
+                    observation[base_function + 8*i + 4] = cpu
+                    observation[base_function + 8*i + 5] = memory
+                    observation[base_function + 8*i + 6] = cpu_adjust_direction
+                    observation[base_function + 8*i + 7] = memory_adjust_direction
+                    observation[base_function + 8*i + 8] = invoke_num
 
                     # Unmask action cpu access
                     if cpu_adjust_direction == 0: 
-                        mask[4*offset_function + 0] = 0 # Decrease one CPU slot
-                        mask[4*offset_function + 1] = 0 # Increase one CPU slot
+                        mask[4*i + 0] = 0 # Decrease one CPU slot
+                        mask[4*i + 1] = 0 # Increase one CPU slot
                     elif cpu_adjust_direction == -1 and cpu > cpu_least_hint:
-                        mask[4*offset_function + 0] = 0 # Decrease one CPU slot
+                        mask[4*i + 0] = 0 # Decrease one CPU slot
                     elif cpu_adjust_direction == 1 and cpu < cpu_cap_per_function:
-                        mask[4*offset_function + 1] = 0 # Increase one CPU slot
+                        mask[4*i + 1] = 0 # Increase one CPU slot
 
                     # Unmask action memory access
                     if memory_adjust_direction == 0: 
-                        mask[4*offset_function + 2] = 0 # Decrease one memory slot
-                        mask[4*offset_function + 3] = 0 # Increase one memory slot
+                        mask[4*i + 2] = 0 # Decrease one memory slot
+                        mask[4*i + 3] = 0 # Increase one memory slot
                     if memory_adjust_direction == -1 and memory > memory_least_hint:
-                        mask[4*offset_function + 2] = 0 # Decrease one memory slot
+                        mask[4*i + 2] = 0 # Decrease one memory slot
                     elif memory_adjust_direction == 1 and memory < memory_cap_per_function:
-                        mask[4*offset_function + 3] = 0 # Increase one memory slot
+                        mask[4*i + 3] = 0 # Increase one memory slot
 
-                    offset_function = offset_function + 1
-        
         observation = torch.Tensor(observation).unsqueeze(0)
         mask = torch.Tensor(mask).unsqueeze(0)
 

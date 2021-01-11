@@ -69,6 +69,7 @@ def sample_from_trigger_dist(
     invocation_dict,
     trigger_dist,
     max_function=50,
+    min_load_per_trace=300,
     max_load_per_trace=600,
     max_timestep=60,
     save_file_path="azurefunctions-dataset2019/",
@@ -103,7 +104,7 @@ def sample_from_trigger_dist(
             for timestep in range(max_timestep):
                 invoke_list.append(int(trace["{}".format(timestep+1)]))
 
-            if np.sum(invoke_list) <= max_load_per_trace and index not in index_list:
+            if np.sum(invoke_list) <= max_load_per_trace and np.sum(invoke_list) >= min_load_per_trace and index not in index_list:
                 index_list.append(index)
 
             if len(index_list) >= int(max_function * trigger_dist[trigger]) + 1:
@@ -199,10 +200,11 @@ def clean_old_samples(
 
 if __name__ == "__main__":
     azure_file_path = "azurefunctions-dataset2019/"
-    max_workload = 10
+    max_workload = 1
     max_function = 100
     max_timestep = 60
-    max_load_per_trace = 10000
+    min_load_per_trace = 10
+    max_load_per_trace = 100
     trigger_dist = {
         "http": 0.359,
         "queue": 0.335,
@@ -229,6 +231,7 @@ if __name__ == "__main__":
             trigger_dist=trigger_dist,
             max_function=max_function,
             max_timestep=max_timestep,
+            min_load_per_trace=min_load_per_trace,
             max_load_per_trace=max_load_per_trace,
             save_file_path="azurefunctions-dataset2019/",
             save_file_id=i

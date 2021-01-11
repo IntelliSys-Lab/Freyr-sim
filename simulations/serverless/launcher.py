@@ -30,14 +30,14 @@ def launch():
     
     # Set paramters for FaaSEnv
     env_params = EnvParameters(
-        max_function=200,
+        max_function=110,
         max_server=20,
-        cluster_size=10,
-        user_cpu_per_server=64,
-        user_memory_per_server=64,
-        keep_alive_window_per_server=60,
-        cpu_cap_per_function=8,
-        memory_cap_per_function=8,
+        cluster_size=20,
+        user_cpu_per_server=32,
+        user_memory_per_server=32,
+        keep_alive_window_per_server=10,
+        cpu_cap_per_function=16,
+        memory_cap_per_function=16,
         interval=1,
         timeout_penalty=600
     )
@@ -47,7 +47,7 @@ def launch():
         profile=profile,
         timetable=timetable,
         env_params=env_params,
-        max_episode=10,
+        max_episode=1,
         save_plot=True,
         show_plot=False,
         logger_wrapper=logger_wrapper
@@ -57,7 +57,7 @@ def launch():
         profile=profile,
         timetable=timetable,
         env_params=env_params,
-        max_episode=10,
+        max_episode=1,
         save_plot=True,
         show_plot=False,
         logger_wrapper=logger_wrapper
@@ -67,7 +67,7 @@ def launch():
         profile=profile,
         timetable=timetable,
         env_params=env_params,
-        max_episode=10,
+        max_episode=1,
         save_plot=True,
         show_plot=False,
         logger_wrapper=logger_wrapper
