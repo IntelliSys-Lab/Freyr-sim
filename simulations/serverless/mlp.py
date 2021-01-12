@@ -44,3 +44,7 @@ class MLP(nn.Module):
             x = layer(x)
 
         return x
+<<<<<<< HEAD
+=======
+        
+>>>>>>> 396338cac6ea37244761b01a938a2a8d4a56f49c

@@ -4,6 +4,10 @@ import os
 import stat
 import sys
 from glob import glob
+<<<<<<< HEAD
+=======
+import params
+>>>>>>> 396338cac6ea37244761b01a938a2a8d4a56f49c
 
 
 #
@@ -201,10 +205,17 @@ def clean_old_samples(
 if __name__ == "__main__":
     azure_file_path = "azurefunctions-dataset2019/"
     max_workload = 1
+<<<<<<< HEAD
     max_function = 100
     max_timestep = 60
     min_load_per_trace = 1
     max_load_per_trace = 500
+=======
+    max_function = 50
+    max_timestep = 120
+    min_load_per_trace = 10
+    max_load_per_trace = 1000
+>>>>>>> 396338cac6ea37244761b01a938a2a8d4a56f49c
     trigger_dist = {
         "http": 0.359,
         "queue": 0.335,
@@ -238,4 +249,4 @@ if __name__ == "__main__":
         )
 
     print("Sampling finished!")
-
+    

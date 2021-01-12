@@ -8,6 +8,7 @@ class EnvParameters():
     """
     def __init__(
         self,
+<<<<<<< HEAD
         max_function=60,
         max_server=40,
         cluster_size=10,
@@ -18,6 +19,18 @@ class EnvParameters():
         memory_cap_per_function=8,
         interval=1,
         timeout_penalty=60
+=======
+        max_function,
+        max_server,
+        cluster_size,
+        user_cpu_per_server,
+        user_memory_per_server,
+        keep_alive_window_per_server,
+        cpu_cap_per_function,
+        memory_cap_per_function,
+        interval,
+        timeout_penalty
+>>>>>>> 396338cac6ea37244761b01a938a2a8d4a56f49c
     ):
         self.max_function = max_function
         self.max_server = max_server
@@ -37,22 +50,22 @@ class FunctionParameters():
     """
     def __init__(
         self,
-        ideal_cpu=8,
-        ideal_memory=8,
-        max_duration=1,
-        min_duration=60,
-        cpu_cap_per_function=8,
-        memory_cap_per_function=8,
-        cpu_least_hint=1,
-        memory_least_hint=1,
-        cpu_user_defined=4,
-        memory_user_defined=4,
-        timeout=60,
+        ideal_cpu,
+        ideal_memory,
+        max_duration,
+        min_duration,
+        cpu_cap_per_function,
+        memory_cap_per_function,
+        cpu_least_hint,
+        memory_least_hint,
+        cpu_user_defined,
+        memory_user_defined,
+        timeout,
+        hash_value,
+        cold_start_time,
+        k,
         application_id=None,
         function_id=None,
-        hash_value=0,
-        cold_start_time=1,
-        k=2,
         sequence=None,
     ):
         self.ideal_cpu = ideal_cpu
@@ -80,11 +93,11 @@ class TimetableParameters():
     """
     def __init__(
         self,
-        max_timestep=200,
-        distribution_type="poisson",
-        mod_factors=[1, 1, 1, 1, 1, 2, 5, 8, 10, 8],
-        bernoulli_p=0.5,
-        poisson_mu=0.8,
+        max_timestep,
+        distribution_type,
+        mod_factors=None,
+        bernoulli_p=None,
+        poisson_mu=None,
         azure_invocation_traces=None
     ):
         self.max_timestep = max_timestep
@@ -98,7 +111,4 @@ class TimetableParameters():
             self.poisson_mu = poisson_mu
         elif distribution_type == "azure":
             self.azure_invocation_traces = azure_invocation_traces
-
-    
-    
-    
+            
