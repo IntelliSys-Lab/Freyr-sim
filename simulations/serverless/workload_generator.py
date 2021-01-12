@@ -4,9 +4,9 @@ import scipy.stats as stats
 import pandas as pd
 import numpy as np
 import gym
-
 from gym.envs.serverless.faas_utils import Function, Profile, Timetable
 from gym.envs.serverless.faas_params import FunctionParameters, TimetableParameters
+import params
 
 
 class WorkloadGenerator():
@@ -174,15 +174,20 @@ class WorkloadGenerator():
     
     def azure_params(
         self,
-        max_timestep=600,
-        azure_file_path="azurefunctions-dataset2019/",
-        memory_traces_file="sampled_memory_traces.csv",
-        duration_traces_file="sampled_duration_traces.csv",
-        invocation_traces_file="sampled_invocation_traces.csv"
+        max_timestep,
+        azure_file_path,
+        memory_traces_file,
+        duration_traces_file,
+        invocation_traces_file
     ):
         memory_traces = pd.read_csv(azure_file_path + memory_traces_file)
         duration_traces = pd.read_csv(azure_file_path + duration_traces_file)
         invocation_traces = pd.read_csv(azure_file_path + invocation_traces_file)
+
+        cpu_cap_per_function = params.cpu_cap_per_function
+        memory_cap_per_function = params.memory_cap_per_function
+        # 1536 is the max memory allowed by Azure Functions 
+        level = 1536 / memory_cap_per_function
 
         function_params_dict = {}
 
@@ -197,14 +202,14 @@ class WorkloadGenerator():
         for function_hash in function_params_dict.keys():
             for _, row in memory_traces.iterrows():
                 if row["HashApp"] == function_params_dict[function_hash]["HashApp"]:
-                    function_params_dict[function_hash]["ideal_memory"] = np.clip(int(row["AverageAllocatedMb_pct100"]/192) + 1, 1, 8)
-                    function_params_dict[function_hash]["ideal_cpu"] = np.clip(int(row["AverageAllocatedMb_pct100"]/192) + 1, 1, 8)
+                    function_params_dict[function_hash]["ideal_memory"] = np.clip(int(row["AverageAllocatedMb_pct100"]/level) + 1, 1, cpu_cap_per_function)
+                    function_params_dict[function_hash]["ideal_cpu"] = np.clip(int(row["AverageAllocatedMb_pct100"]/level) + 1, 1, memory_cap_per_function)
                     function_params_dict[function_hash]["memory_least_hint"] = 1
                     function_params_dict[function_hash]["cpu_least_hint"] = 1
-                    function_params_dict[function_hash]["memory_user_defined"] = np.clip(int(row["AverageAllocatedMb_pct1"]/192) + 1, 1, 8)
-                    function_params_dict[function_hash]["cpu_user_defined"] = np.clip(int(row["AverageAllocatedMb_pct1"]/192) + 1, 1, 8)
-                    function_params_dict[function_hash]["memory_cap_per_function"] = 8
-                    function_params_dict[function_hash]["cpu_cap_per_function"] = 8
+                    function_params_dict[function_hash]["memory_user_defined"] = np.clip(int(row["AverageAllocatedMb_pct1"]/level) + 1, 1, cpu_cap_per_function)
+                    function_params_dict[function_hash]["cpu_user_defined"] = np.clip(int(row["AverageAllocatedMb_pct1"]/level) + 1, 1, memory_cap_per_function)
+                    function_params_dict[function_hash]["memory_cap_per_function"] = cpu_cap_per_function
+                    function_params_dict[function_hash]["cpu_cap_per_function"] = memory_cap_per_function
                     break
 
             for _, row in duration_traces.iterrows():
@@ -232,28 +237,24 @@ class WorkloadGenerator():
 
         hash_value = 0
         for function_hash in function_params_dict.keys():
-            try:
-                function_params = FunctionParameters(
-                    ideal_cpu=function_params_dict[function_hash]["ideal_cpu"], 
-                    ideal_memory=function_params_dict[function_hash]["ideal_memory"],
-                    max_duration=function_params_dict[function_hash]["max_duration"],
-                    min_duration=function_params_dict[function_hash]["min_duration"],
-                    cpu_least_hint=function_params_dict[function_hash]["cpu_least_hint"],
-                    memory_least_hint=function_params_dict[function_hash]["memory_least_hint"],
-                    timeout=function_params_dict[function_hash]["timeout"],
-                    cpu_cap_per_function=function_params_dict[function_hash]["cpu_cap_per_function"],
-                    memory_cap_per_function=function_params_dict[function_hash]["memory_cap_per_function"],
-                    cpu_user_defined=function_params_dict[function_hash]["cpu_user_defined"],
-                    memory_user_defined=function_params_dict[function_hash]["memory_user_defined"],
-                    application_id=function_params_dict[function_hash]["HashApp"],
-                    function_id=function_hash,
-                    hash_value=hash_value,
-                    cold_start_time=function_params_dict[function_hash]["cold_start_time"],
-                    k=2
-                )
-            except Exception:
-                print("{} not found".format(function_params_dict[function_hash]["HashApp"]))
-                sys.exit()
+            function_params = FunctionParameters(
+                ideal_cpu=function_params_dict[function_hash]["ideal_cpu"], 
+                ideal_memory=function_params_dict[function_hash]["ideal_memory"],
+                max_duration=function_params_dict[function_hash]["max_duration"],
+                min_duration=function_params_dict[function_hash]["min_duration"],
+                cpu_least_hint=function_params_dict[function_hash]["cpu_least_hint"],
+                memory_least_hint=function_params_dict[function_hash]["memory_least_hint"],
+                timeout=function_params_dict[function_hash]["timeout"],
+                cpu_cap_per_function=function_params_dict[function_hash]["cpu_cap_per_function"],
+                memory_cap_per_function=function_params_dict[function_hash]["memory_cap_per_function"],
+                cpu_user_defined=function_params_dict[function_hash]["cpu_user_defined"],
+                memory_user_defined=function_params_dict[function_hash]["memory_user_defined"],
+                application_id=function_params_dict[function_hash]["HashApp"],
+                function_id=function_hash,
+                hash_value=hash_value,
+                cold_start_time=function_params_dict[function_hash]["cold_start_time"],
+                k=2
+            )
 
             profile_params[function_params.function_id] = function_params
             sequence_dict[function_params.application_id].append(function_params.function_id)
@@ -463,4 +464,3 @@ class WorkloadGenerator():
         timetable = self.generate_timetable(profile, timetable_params)
             
         return profile, timetable
-

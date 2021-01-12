@@ -351,7 +351,7 @@ class FaaSEnv(gym.Env):
         # Reward of completion time
         reward = reward + -self.request_record.get_current_completion_time(self.system_time)
 
-        # Discounted by square root of throughput
+        # # Discounted by square root of throughput
         throughput = np.max([np.sqrt(self.get_function_throughput()), 1])
         reward = reward / throughput
             

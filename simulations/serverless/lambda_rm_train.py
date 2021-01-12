@@ -12,6 +12,7 @@ from logger import Logger
 from plotter import Plotter
 from ppo2_agent import PPO2Agent
 from utils import log_trends
+import params
 
 
 #
@@ -396,30 +397,6 @@ if __name__ == "__main__":
     except RuntimeError:
         print("Unable to set_start_method('spawn')!")
 
-    # Training paramters
-    workload_type = "azure"
-    max_workload = 1
-    max_episode = 1000
-    hidden_dims = [32, 16]
-    learning_rate = 0.001
-    discount_factor = 1
-    ppo_clip = 0.2
-    ppo_epoch = 5
-    value_loss_coef = 0.5
-    entropy_coef = 0.01
-    model_save_path = "ckpt/best_model.pth"
-    max_timestep = 60
-    max_function = 110
-    max_server = 20
-    cluster_size = 20
-    user_cpu_per_server = 32
-    user_memory_per_server = 32
-    keep_alive_window_per_server = 10
-    cpu_cap_per_function = 16
-    memory_cap_per_function = 16
-    interval = 1
-    timeout_penalty = 600
-
     # Set up logger wrapper
     logger_wrapper = Logger()
 
@@ -430,41 +407,41 @@ if __name__ == "__main__":
     print("")
     print("Generating workloads...")
     workload_dict = generate_workload_dict(
-        workload_type=workload_type, 
-        max_workload=max_workload,
-        max_timestep=max_timestep, 
-        max_function=max_function,
-        max_server=max_server,
-        cluster_size=cluster_size,
-        user_cpu_per_server=user_cpu_per_server,
-        user_memory_per_server=user_memory_per_server,
-        keep_alive_window_per_server=keep_alive_window_per_server,
-        cpu_cap_per_function=cpu_cap_per_function,
-        memory_cap_per_function=memory_cap_per_function,
-        interval=interval,
-        timeout_penalty=timeout_penalty
+        workload_type=params.workload_type, 
+        max_workload=params.max_workload,
+        max_timestep=params.max_timestep, 
+        max_function=params.max_function,
+        max_server=params.max_server,
+        cluster_size=params.cluster_size,
+        user_cpu_per_server=params.user_cpu_per_server,
+        user_memory_per_server=params.user_memory_per_server,
+        keep_alive_window_per_server=params.keep_alive_window_per_server,
+        cpu_cap_per_function=params.cpu_cap_per_function,
+        memory_cap_per_function=params.memory_cap_per_function,
+        interval=params.interval,
+        timeout_penalty=params.timeout_penalty
     )
 
     # Start training
-    observation_dim = 1 + 2 * max_server + 8 * max_function
-    action_dim = 4 * max_function + 1
+    observation_dim = 1 + 2 * params.max_server + 8 * params.max_function
+    action_dim = 4 * params.max_function + 1
 
     print("")
     print("Start training...")
     lambda_rm_train(
         workload_dict=workload_dict,
         logger_wrapper=logger_wrapper,
-        max_episode=max_episode,
+        max_episode=params.max_episode,
         observation_dim=observation_dim,
         action_dim=action_dim,
-        hidden_dims=hidden_dims,
-        learning_rate=learning_rate,
-        discount_factor=discount_factor,
-        ppo_clip=ppo_clip,
-        ppo_epoch=ppo_epoch,
-        value_loss_coef=value_loss_coef,
-        entropy_coef=entropy_coef,
-        model_save_path=model_save_path,
+        hidden_dims=params.hidden_dims,
+        learning_rate=params.learning_rate,
+        discount_factor=params.discount_factor,
+        ppo_clip=params.ppo_clip,
+        ppo_epoch=params.ppo_epoch,
+        value_loss_coef=params.value_loss_coef,
+        entropy_coef=params.entropy_coef,
+        model_save_path=params.model_save_path,
         save_plot=True,
         show_plot=False,
     )

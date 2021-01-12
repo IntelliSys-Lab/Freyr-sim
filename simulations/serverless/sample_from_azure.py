@@ -203,8 +203,8 @@ if __name__ == "__main__":
     max_workload = 1
     max_function = 100
     max_timestep = 60
-    min_load_per_trace = 10
-    max_load_per_trace = 100
+    min_load_per_trace = 1
+    max_load_per_trace = 500
     trigger_dist = {
         "http": 0.359,
         "queue": 0.335,

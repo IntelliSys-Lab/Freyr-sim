@@ -51,8 +51,6 @@ class PPO2Agent():
         self.model = self.build_model()
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr= self.learning_rate)
 
-        self.eps = np.finfo(np.float32).eps.item()
-
     def build_model(self):
         actor = MLP(
             observation_dim=self.observation_dim,
@@ -170,10 +168,6 @@ class PPO2Agent():
 
         return avg_loss_epoch
     
-    def norm(self, x):
-        x = (x - x.mean()) / (x.std() + self.eps)
-        return x
-
     def discount_rewards(self, reward_history):
         if isinstance(reward_history[0], list):
             reward_batch = []
@@ -185,7 +179,7 @@ class PPO2Agent():
                     discounted_rewards.append(tmp)
                 
                 discounted_rewards = torch.Tensor(discounted_rewards[::-1])
-                reward_batch.append(self.norm(discounted_rewards))
+                reward_batch.append(discounted_rewards)
             
             result = torch.stack(reward_batch)
         else:
@@ -196,7 +190,7 @@ class PPO2Agent():
                 discounted_rewards.append(tmp)
             
             discounted_rewards = torch.Tensor(discounted_rewards[::-1])
-            result = self.norm(discounted_rewards)
+            result = discounted_rewards
 
         return result
     
