@@ -133,6 +133,7 @@ def greedy_rm(
                 logger.info("**********")
                 logger.info("**********")
                 logger.info("")
+                logger.info("Running {}".format(rm))
                 logger.info("Episode {} finished after:".format(episode))
                 logger.info("{} actual timesteps".format(actual_time))
                 logger.info("{} system timesteps".format(system_time))
