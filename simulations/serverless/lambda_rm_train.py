@@ -264,6 +264,7 @@ def lambda_rm_train(
 
     # Set up logger
     logger = logger_wrapper.get_logger(rm, True)
+
     # Make env and result dict
     env_dict = {}
     for workload_id in workload_dict.keys():
@@ -281,15 +282,15 @@ def lambda_rm_train(
     agent = PPO2Agent(
         observation_dim=observation_dim,
         action_dim=action_dim,
-=======
-    save_plot,
-    show_plot,
-):
-    rm = "LambdaRM_train"
-    function_profile = profile.get_function_profile()
+        hidden_dims=hidden_dims,
+        learning_rate=learning_rate,
+        discount_factor=discount_factor,
+        ppo_clip=ppo_clip,
+        ppo_epoch=ppo_epoch,
+        value_loss_coef=value_loss_coef,
+        entropy_coef=entropy_coef
+    )
 
-    # Set up logger
-    
     # Trends recording
     reward_trend = []
     avg_completion_time_trend = []

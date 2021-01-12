@@ -204,7 +204,7 @@ if __name__ == "__main__":
     max_function = 100
     max_timestep = 60
     min_load_per_trace = 1
-    max_load_per_trace = 500
+    max_load_per_trace = 1000
     trigger_dist = {
         "http": 0.359,
         "queue": 0.335,
