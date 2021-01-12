@@ -8,7 +8,6 @@ class EnvParameters():
     """
     def __init__(
         self,
-<<<<<<< HEAD
         max_function=60,
         max_server=40,
         cluster_size=10,
@@ -19,18 +18,6 @@ class EnvParameters():
         memory_cap_per_function=8,
         interval=1,
         timeout_penalty=60
-=======
-        max_function,
-        max_server,
-        cluster_size,
-        user_cpu_per_server,
-        user_memory_per_server,
-        keep_alive_window_per_server,
-        cpu_cap_per_function,
-        memory_cap_per_function,
-        interval,
-        timeout_penalty
->>>>>>> 396338cac6ea37244761b01a938a2a8d4a56f49c
     ):
         self.max_function = max_function
         self.max_server = max_server

@@ -8,20 +8,11 @@ from ppo2_agent import PPO2Agent
 from utils import log_trends, log_resource_utils, log_function_throughput
 
 
-<<<<<<< HEAD
-=======
-
-#
-# Policy gradient provision strategy
-#
-
->>>>>>> 396338cac6ea37244761b01a938a2a8d4a56f49c
 def lambda_rm_eval(
     profile,
     timetable,
     env_params,
     logger_wrapper,
-<<<<<<< HEAD
     max_episode=10,
     hidden_dims=[32, 16],
     learning_rate=0.001,
@@ -33,19 +24,6 @@ def lambda_rm_eval(
     checkpoint_path="ckpt/best_model.pth",
     save_plot=False,
     show_plot=True,
-=======
-    max_episode,
-    hidden_dims,
-    learning_rate,
-    discount_factor,
-    ppo_clip,
-    ppo_epoch,
-    value_loss_coef,
-    entropy_coef,
-    checkpoint_path,
-    save_plot,
-    show_plot,
->>>>>>> 396338cac6ea37244761b01a938a2a8d4a56f49c
 ):
     rm = "LambdaRM_eval"
     function_profile = profile.get_function_profile()

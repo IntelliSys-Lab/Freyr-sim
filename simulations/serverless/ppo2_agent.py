@@ -89,7 +89,6 @@ class PPO2Agent():
 
     def update(
         self,
-<<<<<<< HEAD
         observation_history_batch,
         mask_history_batch,
         action_history_batch,
@@ -192,87 +191,6 @@ class PPO2Agent():
             
             discounted_rewards = torch.Tensor(discounted_rewards[::-1])
             result = discounted_rewards
-=======
-        observation_history,
-        mask_history,
-        action_history,
-        reward_history,
-        value_history,
-        log_prob_history
-    ):
-        self.model.train()
-
-        # Discount rewards
-        reward_history = self.discount_rewards(reward_history)
-
-        # Calculate advantage
-        advantage = reward_history - value_history
-        
-        # Detach trajectory 
-        observation_history = observation_history.detach()
-        mask_history = mask_history.detach()
-        action_history = action_history.detach()
-        log_prob_history = log_prob_history.detach()
-        advantage = advantage.detach()
-        reward_history = reward_history.detach()
-
-        # print("History after detached: ")
-        # print("observation_history: {}".format(observation_history.shape))
-        # print("mask_history: {}".format(mask_history.shape))
-        # print("action_history shape: {}".format(action_history.shape))
-        # print("reward_history shape: {}".format(reward_history.shape))
-        # print("value_history shape: {}".format(value_history.shape))
-        # print("log_prob_history shape: {}".format(log_prob_history.shape))
-        
-        # PPO parameters update
-        loss_epoch = 0
-        for _ in range(self.ppo_epoch):
-            # Get new log probs of actions for all input states
-            action_pred_all, value_pred_all = self.model(observation_history)
-            action_pred_all = action_pred_all + mask_history
-            action_prob_all = F.softmax(action_pred_all, dim=-1)
-            dist = Categorical(action_prob_all)
-            dist_entropy = dist.entropy().mean()
-
-            # New log probs and values using old actions
-            new_log_prob_history = dist.log_prob(action_history)
-            new_value_history = value_pred_all.squeeze()
-
-            policy_ratio = (new_log_prob_history - log_prob_history).exp()
-            policy_loss_1 = policy_ratio * advantage
-            policy_loss_2 = torch.clamp(
-                policy_ratio, 
-                min = 1.0 - self.ppo_clip, 
-                max = 1.0 + self.ppo_clip
-            ) * advantage
-
-            policy_loss = - torch.min(policy_loss_1, policy_loss_2).mean()
-            value_loss = F.smooth_l1_loss(reward_history, new_value_history).mean()
-            loss = policy_loss + value_loss * self.value_loss_coef - dist_entropy * self.entropy_coef
-
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
-            loss_epoch = loss_epoch + loss.item()
-            
-        loss_epoch = loss_epoch / self.ppo_epoch
-
-        return loss_epoch
-    
-    def norm(self, x):
-        x = (x - x.mean()) / (x.std() + self.eps)
-        return x
-
-    def discount_rewards(self, reward_history):
-        discounted_rewards = []
-        tmp = 0
-        for reward in reward_history[::-1]:
-            tmp = tmp * self.gamma + reward
-            discounted_rewards.append(tmp)
-        
-        discounted_rewards = torch.Tensor(discounted_rewards[::-1])
-        result = self.norm(discounted_rewards)
->>>>>>> 396338cac6ea37244761b01a938a2a8d4a56f49c
 
         return result
     
