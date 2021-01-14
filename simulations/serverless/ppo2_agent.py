@@ -202,3 +202,7 @@ class PPO2Agent():
 
     def load(self, checkpoint_path):
         self.model.load_state_dict(torch.load(checkpoint_path))
+        print("Total parameters: {}".format(self.count_parameters()))
+
+    def count_parameters(self):
+        return sum(p.numel() for p in self.model.parameters() if p.requires_grad)

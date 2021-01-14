@@ -299,6 +299,7 @@ def lambda_rm_train(
 
     # Record max sum rewards
     max_reward_sum = -10e8
+    min_loss = 10e8
     
     # Start training
     for episode in range(max_episode):
@@ -335,10 +336,15 @@ def lambda_rm_train(
             log_prob_history_batch=log_prob_history_batch
         )
 
-        # Save the best model
+        # Save the max sum reward model
         if max_reward_sum < reward_sum:
             max_reward_sum = reward_sum
-            agent.save(model_save_path)
+            agent.save(model_save_path + "max_reward_sum.ckpt")
+
+        # Save the min loss model
+        if loss < min_loss:
+            min_loss = loss
+            agent.save(model_save_path + "min_loss.ckpt")
         
         logger.info("")
         logger.info("**********")

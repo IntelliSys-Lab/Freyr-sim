@@ -7,6 +7,8 @@ from plotter import Plotter
 from ppo2_agent import PPO2Agent
 from utils import log_trends, log_resource_utils, log_function_throughput
 
+import time
+
 
 def lambda_rm_eval(
     profile,
@@ -21,7 +23,7 @@ def lambda_rm_eval(
     ppo_epoch=5,
     value_loss_coef=0.5,
     entropy_coef=0.01,
-    checkpoint_path="ckpt/best_model.pth",
+    checkpoint_path="ckpt/",
     save_plot=False,
     show_plot=True,
 ):
@@ -74,7 +76,12 @@ def lambda_rm_eval(
         episode_done = False
         while episode_done is False:
             actual_time = actual_time + 1
+
+            # before_eval = int(round(time.time() * 1000))
             action, value_pred, log_prob = agent.choose_action(observation, mask)
+            # after_eval = int(round(time.time() * 1000))
+            # print("Eval overhead: {}".format(after_eval - before_eval))
+
             next_observation, next_mask, reward, done, info = env.step(action)
 
             if system_time < info["system_time"]:

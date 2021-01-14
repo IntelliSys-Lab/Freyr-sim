@@ -44,41 +44,41 @@ def launch():
     )
     
     # Start simulations
-    episode = 1
+    episode = 10
 
-    fixed_rm(
-        profile=profile,
-        timetable=timetable,
-        env_params=env_params,
-        max_episode=episode,
-        save_plot=True,
-        show_plot=False,
-        logger_wrapper=logger_wrapper
-    )
+    # fixed_rm(
+    #     profile=profile,
+    #     timetable=timetable,
+    #     env_params=env_params,
+    #     max_episode=episode,
+    #     save_plot=True,
+    #     show_plot=False,
+    #     logger_wrapper=logger_wrapper
+    # )
 
-    # GreedyRM
-    greedy_rm(
-        profile=profile,
-        timetable=timetable,
-        env_params=env_params,
-        max_episode=episode,
-        save_plot=True,
-        show_plot=False,
-        logger_wrapper=logger_wrapper
-    )
+    # # GreedyRM
+    # greedy_rm(
+    #     profile=profile,
+    #     timetable=timetable,
+    #     env_params=env_params,
+    #     max_episode=episode,
+    #     save_plot=True,
+    #     show_plot=False,
+    #     logger_wrapper=logger_wrapper
+    # )
 
-    # Ensure
-    ensure_rm(
-        profile=profile,
-        timetable=timetable,
-        env_params=env_params,
-        max_episode=episode,
-        save_plot=True,
-        show_plot=False,
-        logger_wrapper=logger_wrapper
-    )
+    # # Ensure
+    # ensure_rm(
+    #     profile=profile,
+    #     timetable=timetable,
+    #     env_params=env_params,
+    #     max_episode=episode,
+    #     save_plot=True,
+    #     show_plot=False,
+    #     logger_wrapper=logger_wrapper
+    # )
 
-    # LambdaRM
+    # LambdaRM max reward sum
     lambda_rm_eval(
         profile=profile,
         timetable=timetable,
@@ -91,11 +91,30 @@ def launch():
         ppo_epoch=params.ppo_epoch,
         value_loss_coef=params.value_loss_coef,
         entropy_coef=params.entropy_coef,
-        checkpoint_path=params.model_save_path,
+        checkpoint_path=params.model_save_path + "max_reward_sum.ckpt",
         save_plot=True,
         show_plot=False,
         logger_wrapper=logger_wrapper
     )
+
+    # # LambdaRM min loss
+    # lambda_rm_eval(
+    #     profile=profile,
+    #     timetable=timetable,
+    #     env_params=env_params,
+    #     max_episode=episode,
+    #     hidden_dims=params.hidden_dims,
+    #     learning_rate=params.learning_rate,
+    #     discount_factor=params.discount_factor,
+    #     ppo_clip=params.ppo_clip,
+    #     ppo_epoch=params.ppo_epoch,
+    #     value_loss_coef=params.value_loss_coef,
+    #     entropy_coef=params.entropy_coef,
+    #     checkpoint_path=params.model_save_path + "min_loss.ckpt",
+    #     save_plot=True,
+    #     show_plot=False,
+    #     logger_wrapper=logger_wrapper
+    # )
 
 
 if __name__ == "__main__":
