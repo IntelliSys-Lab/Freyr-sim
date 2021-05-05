@@ -1,408 +1,220 @@
 import sys
 sys.path.append("../../gym")
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import multiprocessing
 import gym
 
-from gym.envs.serverless.faas_params import EnvParameters
-from workload_generator import WorkloadGenerator
+from gym.envs.serverless.faas_params import WorkloadParameters, EnvParameters
 from logger import Logger
-from plotter import Plotter
 from ppo2_agent import PPO2Agent
 from utils import log_trends
 import params
 
 
 #
-# Generating workloads via multiprocessing
-#
-
-def batch_workload(
-    workload_id,
-    workload_type,
-    max_timestep,
-    max_function,
-    max_server,
-    cluster_size,
-    user_cpu_per_server,
-    user_memory_per_server,
-    keep_alive_window_per_server,
-    cpu_cap_per_function,
-    memory_cap_per_function,
-    interval,
-    timeout_penalty,
-    result_dict
-):
-    # Set up workload generator
-    workload_generator = WorkloadGenerator()
-
-    azure_file_path="azurefunctions-dataset2019/"
-    memory_traces_file="sampled_memory_traces_{}.csv".format(workload_id)
-    duration_traces_file="sampled_duration_traces_{}.csv".format(workload_id)
-    invocation_traces_file="sampled_invocation_traces_{}.csv".format(workload_id)
-
-    profile, timetable = workload_generator.generate_workload(
-        default=workload_type,
-        max_timestep=max_timestep,
-        azure_file_path=azure_file_path,
-        memory_traces_file=memory_traces_file,
-        duration_traces_file=duration_traces_file,
-        invocation_traces_file=invocation_traces_file
-    )
-
-    # Set paramters 
-    env_params = EnvParameters(
-        max_function=max_function,
-        max_server=max_server,
-        cluster_size=cluster_size,
-        user_cpu_per_server=user_cpu_per_server,
-        user_memory_per_server=user_memory_per_server,
-        keep_alive_window_per_server=keep_alive_window_per_server,
-        cpu_cap_per_function=cpu_cap_per_function,
-        memory_cap_per_function=memory_cap_per_function,
-        interval=interval,
-        timeout_penalty=timeout_penalty
-    )
-
-    result_dict[workload_id]["profile"] = profile
-    result_dict[workload_id]["timetable"] = timetable
-    result_dict[workload_id]["env_params"] = env_params
-
-def generate_workload_dict(
-    workload_type,
-    max_workload,
-    max_timestep, 
-    max_function,
-    max_server,
-    cluster_size,
-    user_cpu_per_server,
-    user_memory_per_server,
-    keep_alive_window_per_server,
-    cpu_cap_per_function,
-    memory_cap_per_function,
-    interval,
-    timeout_penalty
-):  
-    # Init workload dict
-    workload_dict = {}
-
-    # Set up multithreading
-    manager = multiprocessing.Manager()
-    result_dict = manager.dict()
-    jobs = []
-
-    for workload_id in range(max_workload):
-        result_dict[workload_id] = manager.dict()
-        
-        p = multiprocessing.Process(
-            target=batch_workload,
-            args=(
-                workload_id, 
-                workload_type, 
-                max_timestep, 
-                max_function,
-                max_server,
-                cluster_size,
-                user_cpu_per_server,
-                user_memory_per_server,
-                keep_alive_window_per_server,
-                cpu_cap_per_function,
-                memory_cap_per_function,
-                interval,
-                timeout_penalty,
-                result_dict,
-            )
-        )
-        jobs.append(p)
-        p.start()
-    
-    for p in jobs:
-        p.join()
-    
-    # Retrieve workloads from result dict
-    for workload_id in result_dict.keys():
-        workload_dict[workload_id] = {}
-        workload_dict[workload_id]["profile"] = result_dict[workload_id]["profile"]
-        workload_dict[workload_id]["timetable"] = result_dict[workload_id]["timetable"]
-        workload_dict[workload_id]["env_params"] = result_dict[workload_id]["env_params"]
-
-    return workload_dict
-        
-#
-# Batch training via torch multiprocessing
-#
-
-def batch_training(
-    workload_id,
-    env,
-    agent,
-    result_dict
-):
-    observation, mask = env.reset()
-    agent.reset()
-
-    actual_time = 0
-    system_time = 0
-    reward_sum = 0
-
-    observation_history = []
-    mask_history = []
-    action_history = []
-    reward_history = []
-    value_history = []
-    log_prob_history = []
-
-    episode_done = False
-    while episode_done is False:
-        actual_time = actual_time + 1
-        action, value_pred, log_prob = agent.choose_action(observation, mask)
-        next_observation, next_mask, reward, done, info = env.step(action)
-
-        # Detach tensors
-        observation = observation.detach()
-        mask = mask.detach()
-        action = action.detach()
-        value_pred = value_pred.detach()
-        log_prob = log_prob.detach()
-
-        observation_history.append(observation)
-        mask_history.append(mask)
-        action_history.append(action)
-        reward_history.append(reward)
-        value_history.append(value_pred)
-        log_prob_history.append(log_prob)
-
-        if system_time < info["system_time"]:
-            system_time = info["system_time"]
-
-        reward_sum = reward_sum + reward
-        
-        if done:
-            result_dict[workload_id]["actual_time"] = actual_time
-            result_dict[workload_id]["system_time"] = system_time
-            result_dict[workload_id]["reward_sum"] = reward_sum
-            result_dict[workload_id]["avg_completion_time"] = info["avg_completion_time"]
-            result_dict[workload_id]["timeout_num"] = info["timeout_num"]
-
-            result_dict[workload_id]["observation_history"] = observation_history
-            result_dict[workload_id]["mask_history"] = mask_history
-            result_dict[workload_id]["action_history"] = action_history
-            result_dict[workload_id]["reward_history"] = reward_history
-            result_dict[workload_id]["value_history"] = value_history
-            result_dict[workload_id]["log_prob_history"]= log_prob_history
-            
-            episode_done = True
-        
-        observation = next_observation
-        mask = next_mask
-
-#
-# Process all data collected from the result dict
-#
-
-def process_result_dict(result_dict):
-    actual_time_batch = []
-    system_time_batch = []
-    reward_sum_batch = []
-    avg_completion_time_batch = []
-    timeout_num_batch = []
-
-    observation_history_batch = []
-    mask_history_batch = []
-    action_history_batch = []
-    reward_history_batch = []
-    value_history_batch = []
-    log_prob_history_batch = []
-    
-    for workload_id in result_dict.keys():
-        actual_time_batch.append(result_dict[workload_id]["actual_time"])
-        system_time_batch.append(result_dict[workload_id]["system_time"])
-        reward_sum_batch.append(result_dict[workload_id]["reward_sum"])
-        avg_completion_time_batch.append(result_dict[workload_id]["avg_completion_time"])
-        timeout_num_batch.append(result_dict[workload_id]["timeout_num"])
-
-        observation_history_batch.append(torch.cat(result_dict[workload_id]["observation_history"], dim=0))
-        mask_history_batch.append(torch.cat(result_dict[workload_id]["mask_history"], dim=0))
-        action_history_batch.append(torch.cat(result_dict[workload_id]["action_history"], dim=0))
-        reward_history_batch.append(result_dict[workload_id]["reward_history"])
-        value_history_batch.append(torch.cat(result_dict[workload_id]["value_history"]).squeeze())
-        log_prob_history_batch.append(torch.cat(result_dict[workload_id]["log_prob_history"], dim=0))
-
-    actual_time = np.mean(actual_time_batch)
-    system_time = np.mean(system_time_batch)
-    reward_sum = np.mean(reward_sum_batch)
-    avg_completion_time = np.mean(avg_completion_time_batch)
-    timeout_num = np.mean(timeout_num_batch)
-
-    return actual_time, system_time, reward_sum, avg_completion_time, timeout_num, \
-        observation_history_batch, mask_history_batch, action_history_batch, reward_history_batch, value_history_batch, log_prob_history_batch
-
-#
-# Policy gradient provision strategy
+# Policy gradient
 #
 
 def lambda_rm_train(
-    workload_dict,
-    logger_wrapper,
-    max_episode,
-    observation_dim,
-    action_dim,
-    hidden_dims,
-    learning_rate,
-    discount_factor,
-    ppo_clip,
-    ppo_epoch,
-    value_loss_coef,
-    entropy_coef,
-    model_save_path,
-    save_plot=False,
-    show_plot=True,
+    logger_wrapper
 ):
     rm = "LambdaRM_train"
 
     # Set up logger
     logger = logger_wrapper.get_logger(rm, True)
 
-    # Make env and result dict
-    env_dict = {}
-    for workload_id in workload_dict.keys():
-        workload = workload_dict[workload_id]
-        profile = workload["profile"]
-        timetable = workload["timetable"]
-        env_params = workload["env_params"]
-
-        # Make environment
-        env = gym.make("FaaS-v0", params=env_params, profile=profile, timetable=timetable)
-        env.seed(114514) # Reproducible, policy gradient has high variance
-        env_dict[workload_id] = env
-
     # Set up policy gradient agent
     agent = PPO2Agent(
-        observation_dim=observation_dim,
-        action_dim=action_dim,
-        hidden_dims=hidden_dims,
-        learning_rate=learning_rate,
-        discount_factor=discount_factor,
-        ppo_clip=ppo_clip,
-        ppo_epoch=ppo_epoch,
-        value_loss_coef=value_loss_coef,
-        entropy_coef=entropy_coef
+        observation_dim=params.STATE_DIM,
+        action_dim=params.ACTION_DIM,
+        hidden_dims=params.HIDDEN_DIMS,
+        learning_rate=params.LEARNING_RATE,
+        discount_factor=params.DISCOUNT_FACTOR,
+        ppo_clip=params.PPO_CLIP,
+        ppo_epoch=params.PPO_EPOCH,
+        value_loss_coef=params.VALUE_LOSS_COEF,
+        entropy_coef=params.ENTROPY_COEF
     )
-
-    # Trends recording
-    reward_trend = []
-    avg_completion_time_trend = []
-    timeout_num_trend = []
-    loss_trend = []
 
     # Record max sum rewards
     max_reward_sum = -10e8
-    min_loss = 10e8
-    
+    max_reward_sum_episode = 0
+
     # Start training
-    for episode in range(max_episode):
-        # Set up multithreading
-        manager = torch.multiprocessing.Manager()
-        result_dict = manager.dict()
-        batch = []
-
-        for workload_id in env_dict.keys():
-            env = env_dict[workload_id]
-            result_dict[workload_id] = manager.dict()
-            
-            p = torch.multiprocessing.Process(
-                target=batch_training,
-                args=(workload_id, env, agent, result_dict,)
-            )
-            batch.append(p)
-            p.start()
-
-        for p in batch:
-            p.join()
-
-        # Process results
-        actual_time, system_time, reward_sum, avg_completion_time, timeout_num, \
-            observation_history_batch, mask_history_batch, action_history_batch, reward_history_batch, value_history_batch, log_prob_history_batch \
-                = process_result_dict(result_dict)
-
-        loss = agent.update(
-            observation_history_batch=observation_history_batch,
-            mask_history_batch=mask_history_batch,
-            action_history_batch=action_history_batch,
-            reward_history_batch=reward_history_batch,
-            value_history_batch=value_history_batch,
-            log_prob_history_batch=log_prob_history_batch
+    episode = 0
+    for exp_id in params.EXP_TRAIN:
+        # Set paramters for workloads
+        workload_params = WorkloadParameters(
+            azure_file_path=params.AZURE_FILE_PATH,
+            exp_id=exp_id
         )
 
-        # Save the max sum reward model
-        if max_reward_sum < reward_sum:
-            max_reward_sum = reward_sum
-            agent.save(model_save_path + "max_reward_sum.ckpt")
+        # Set paramters for Environment
+        env_params = EnvParameters(
+            cluster_size=params.CLUSTER_SIZE,
+            user_cpu_per_server=params.USER_CPU_PER_SERVER,
+            user_memory_per_server=params.USER_MEMORY_PER_SERVER,
+            keep_alive_window=params.KEEP_ALIVE_WINDOW,
+            cpu_cap_per_function=params.CPU_CAP_PER_FUNCTION,
+            memory_cap_per_function=params.MEMORY_CAP_PER_FUNCTION,
+            memory_mb_limit=params.MEMORY_MB_LIMIT,
+            interval=params.ENV_INTERVAL_LIMIT,
+            fail_penalty=params.FAIL_PENALTY
+        )
 
-        # Save the min loss model
-        if loss < min_loss:
-            min_loss = loss
-            agent.save(model_save_path + "min_loss.ckpt")
-        
-        logger.info("")
-        logger.info("**********")
-        logger.info("**********")
-        logger.info("**********")
-        logger.info("")
-        logger.info("Running {}".format(rm))
-        logger.info("Episode {} finished after:".format(episode))
-        logger.info("{} actual timesteps".format(actual_time))
-        logger.info("{} system timesteps".format(system_time))
-        logger.info("Total reward: {}".format(reward_sum))
-        logger.info("Avg completion time: {}".format(avg_completion_time))
-        logger.info("Timeout num: {}".format(timeout_num))
-        logger.info("Loss: {}".format(loss))
-        
-        reward_trend.append(reward_sum)
-        avg_completion_time_trend.append(avg_completion_time)
-        timeout_num_trend.append(timeout_num)
-        loss_trend.append(loss)
+        # Set up environment
+        env = gym.make(
+            "FaaS-v0", 
+            workload_params=workload_params,
+            env_params=env_params
+        )
+        env.seed(114514)
 
-    # Plot each episode 
-    plotter = Plotter()
-    
-    if save_plot is True:
-        plotter.plot_save(
-            prefix_name=rm, 
-            reward_trend=reward_trend, 
+        # Trends recording
+        reward_trend = []
+        avg_completion_time_slo_trend = []
+        avg_completion_time_trend = []
+        timeout_num_trend = []
+        loss_trend = []
+
+        for episode_per_exp in range(params.MAX_EPISODE_TRAIN):
+            # Record total number of events
+            total_events = env.event_pq.get_total_size()
+
+            # Reset logger, env, agent
+            logger = logger_wrapper.get_logger(rm, False)
+            observation, mask, current_timestep, current_function_id = env.reset()
+            agent.reset()
+
+            actual_time = 0
+            system_time = 0
+            reward_sum = 0
+
+            observation_history = []
+            mask_history = []
+            action_history = []
+            reward_history = []
+            value_history = []
+            log_prob_history = []
+
+            episode_done = False
+            while episode_done is False:
+                actual_time = actual_time + 1
+                action, _, value_pred, log_prob = agent.choose_action(observation, mask)
+                next_observation, next_mask, reward, done, info, next_timestep, next_function_id = env.step(
+                    current_timestep=current_timestep,
+                    current_function_id=current_function_id,
+                    action=env.decode_action(action)
+                )
+
+                # Detach tensors
+                observation = observation.detach()
+                mask = mask.detach()
+                action = action.detach()
+                value_pred = value_pred.detach()
+                log_prob = log_prob.detach()
+                
+                # Record trajectories
+                observation_history.append(observation)
+                mask_history.append(mask)
+                action_history.append(action)
+                reward_history.append(reward)
+                value_history.append(value_pred)
+                log_prob_history.append(log_prob)
+
+                if system_time < info["system_time"]:
+                    system_time = info["system_time"]
+
+                # logger.debug("")
+                # logger.debug("Actual timestep {}".format(actual_time))
+                # logger.debug("System timestep {}".format(system_time))
+                # logger.debug("Take action: {}".format(action))
+                # logger.debug("Observation: {}".format(observation))
+                # logger.debug("Reward: {}".format(reward))
+
+                reward_sum = reward_sum + reward
+
+                if done:
+                    if system_time < info["system_time"]:
+                        system_time = info["system_time"]
+
+                    avg_completion_time_slo = info["avg_completion_time_slo"]
+                    avg_completion_time = info["avg_completion_time"]
+                    timeout_num = info["timeout_num"]
+
+                    # Concatenate trajectories
+                    observation_history = torch.cat(observation_history, dim=0)
+                    mask_history = torch.cat(mask_history, dim=0)
+                    action_history = torch.cat(action_history, dim=0)
+                    value_history = torch.cat(value_history).squeeze()
+                    log_prob_history = torch.cat(log_prob_history, dim=0)
+
+                    loss = agent.update(
+                        observation_history=observation_history,
+                        mask_history=mask_history,
+                        action_history=action_history,
+                        reward_history=reward_history,
+                        value_history=value_history,
+                        log_prob_history=log_prob_history
+                    )
+
+                    # Save the max sum reward model
+                    if max_reward_sum < reward_sum:
+                        max_reward_sum = reward_sum
+                        max_reward_sum_episode = episode
+                        agent.save(params.MODEL_SAVE_PATH + "max_reward_sum.ckpt")
+
+                    logger.info("")
+                    logger.info("**********")
+                    logger.info("**********")
+                    logger.info("**********")
+                    logger.info("")
+                    logger.info("Running {}".format(rm))
+                    logger.info("Exp {}, Episode {} finished".format(exp_id, episode))
+                    logger.info("{} actual timesteps".format(actual_time))
+                    logger.info("{} system timesteps".format(system_time))
+                    logger.info("Total events: {}".format(total_events))
+                    logger.info("Total reward: {}".format(reward_sum))
+                    logger.info("Avg completion time SLO: {}".format(avg_completion_time_slo))
+                    logger.info("Avg completion time: {}".format(avg_completion_time))
+                    logger.info("Timeout num: {}".format(timeout_num))
+                    logger.info("Loss: {}".format(loss))
+                    logger.info("")
+                    logger.info("Current Max Reward: {}, observed at episode {}".format(max_reward_sum, max_reward_sum_episode))
+                    
+                    reward_trend.append(reward_sum)
+                    avg_completion_time_slo_trend.append(avg_completion_time_slo)
+                    avg_completion_time_trend.append(avg_completion_time)
+                    timeout_num_trend.append(timeout_num)
+                    loss_trend.append(loss)
+                    
+                    episode_done = True
+                
+                observation = next_observation
+                mask = next_mask
+                current_timestep = next_timestep
+                current_function_id = next_function_id
+
+            episode = episode + 1
+
+        # Log trends
+        log_trends(
+            overwrite=False,
+            rm_name=rm,
+            exp_id=exp_id,
+            logger_wrapper=logger_wrapper,
+            reward_trend=reward_trend,
+            avg_completion_time_slo_trend=avg_completion_time_slo_trend,
             avg_completion_time_trend=avg_completion_time_trend,
-            timeout_num_trend=timeout_num_trend, 
-            loss_trend=loss_trend
-        )
-    if show_plot is True:
-        plotter.plot_show(
-            reward_trend=reward_trend, 
-            avg_completion_time_trend=avg_completion_time_trend, 
-            timeout_num_trend=timeout_num_trend, 
+            timeout_num_trend=timeout_num_trend,
             loss_trend=loss_trend
         )
 
-    # Log trends
-    log_trends(
-        logger_wrapper=logger_wrapper,
-        rm_name=rm,
-        overwrite=False,
-        reward_trend=reward_trend,
-        avg_completion_time_trend=avg_completion_time_trend,
-        timeout_num_trend=timeout_num_trend,
-        loss_trend=loss_trend,
-    )
+    # Save the model with max training episode
+    agent.save(params.MODEL_SAVE_PATH + "max_episode.ckpt")
 
 
 if __name__ == "__main__":
-    # Prevent torch.multiprocessing from deadlocks: https://github.com/pytorch/pytorch/issues/48382
-    try:
-        torch.multiprocessing.set_start_method('spawn')
-    except RuntimeError:
-        print("Unable to set_start_method('spawn')!")
-
     # Set up logger wrapper
     logger_wrapper = Logger()
 
@@ -411,46 +223,15 @@ if __name__ == "__main__":
     print("**********")
     print("**********")
     print("")
-    print("Generating workloads...")
-    workload_dict = generate_workload_dict(
-        workload_type=params.workload_type, 
-        max_workload=params.max_workload,
-        max_timestep=params.max_timestep, 
-        max_function=params.max_function,
-        max_server=params.max_server,
-        cluster_size=params.cluster_size,
-        user_cpu_per_server=params.user_cpu_per_server,
-        user_memory_per_server=params.user_memory_per_server,
-        keep_alive_window_per_server=params.keep_alive_window_per_server,
-        cpu_cap_per_function=params.cpu_cap_per_function,
-        memory_cap_per_function=params.memory_cap_per_function,
-        interval=params.interval,
-        timeout_penalty=params.timeout_penalty
-    )
-
-    # Start training
-    observation_dim = 1 + 2 * params.max_server + 8 * params.max_function
-    action_dim = 4 * params.max_function + 1
-
-    print("")
     print("Start training...")
+
     lambda_rm_train(
-        workload_dict=workload_dict,
-        logger_wrapper=logger_wrapper,
-        max_episode=params.max_episode,
-        observation_dim=observation_dim,
-        action_dim=action_dim,
-        hidden_dims=params.hidden_dims,
-        learning_rate=params.learning_rate,
-        discount_factor=params.discount_factor,
-        ppo_clip=params.ppo_clip,
-        ppo_epoch=params.ppo_epoch,
-        value_loss_coef=params.value_loss_coef,
-        entropy_coef=params.entropy_coef,
-        model_save_path=params.model_save_path,
-        save_plot=True,
-        show_plot=False,
+        logger_wrapper=logger_wrapper
     )
 
     print("")
     print("Training finished!")
+    print("")
+    print("**********")
+    print("**********")
+    print("**********")

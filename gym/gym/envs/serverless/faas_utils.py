@@ -4,6 +4,7 @@ import uuid
 import queue
 import random
 import functools
+import heapq
 
 
 @functools.total_ordering
@@ -35,15 +36,8 @@ class Function():
         else:
             self.function_id = uuid.uuid1()
 
-        self.sequence = self.params.sequence
-
         self.hash_value = self.params.hash_value
-        self.application_id = self.params.application_id
 
-        self.resource_adjust_direction = {}
-        self.resource_adjust_direction["cpu"] = 0
-        self.resource_adjust_direction["memory"] = 0
-    
     def set_function(self, cpu, memory):
         self.cpu = cpu
         self.memory = memory
@@ -51,36 +45,34 @@ class Function():
         # Calculate duration
         # Assume CPU has k times more impact on duration than memory
         cpu_duration = (self.params.max_duration - self.params.min_duration) * self.params.k / (self.params.k + 1)
-        cpu_delay_factor = (self.params.ideal_cpu - np.clip(self.cpu, self.params.cpu_least_hint, self.params.ideal_cpu)) \
-            / np.clip(self.params.ideal_cpu - self.params.cpu_least_hint, 1, self.params.ideal_cpu)
+        if self.cpu >= self.params.ideal_cpu:
+            cpu_delay_factor = 0
+        else:
+            cpu_delay_factor = (self.params.ideal_cpu - self.cpu) / (self.params.ideal_cpu - self.params.cpu_least_hint)
         cpu_duration_increment = cpu_duration * cpu_delay_factor
 
         memory_duration = (self.params.max_duration - self.params.min_duration) * 1 / (self.params.k + 1)
-        memory_delay_factor = (self.params.ideal_memory - np.clip(self.memory, self.params.memory_least_hint, self.params.ideal_memory)) \
-            / np.clip(self.params.ideal_memory - self.params.memory_least_hint, 1, self.params.ideal_memory)
+        memory_mb = self.memory * self.params.memory_mb_limit / self.params.memory_cap_per_function
+        least_memory_mb = self.params.memory_least_hint * self.params.memory_mb_limit / self.params.memory_cap_per_function
+        if memory_mb >= self.params.ideal_memory:
+            memory_delay_factor = 0
+        else:
+            memory_delay_factor = (self.params.ideal_memory - memory_mb) / (self.params.ideal_memory - least_memory_mb)
         memory_duration_increment = memory_duration * memory_delay_factor
 
         self.duration = self.params.min_duration + cpu_duration_increment + memory_duration_increment
 
+        # print("ideal_memory: {}, memory_mb: {}".format(self.params.ideal_memory, memory_mb))
+        # print("cpu_delay_factor: {}".format(cpu_delay_factor))
+        # print("cpu_duration_increment: {}".format(cpu_duration_increment))
+        # print("memory_delay_factor: {}".format(memory_delay_factor))
+        # print("memory_duration_increment: {}".format(memory_duration_increment))
+
+    def set_baseline_duration(self):
+        self.baseline_duration = cp.deepcopy(self.duration)
+
     def get_function_id(self):
         return self.function_id
-
-    def get_sequence(self):
-        return self.sequence
-
-    def get_sequence_size(self):
-        sequence_size = 0
-        if self.sequence is not None:
-            sequence_size = len(self.sequence)
-
-        return sequence_size
-
-    def get_total_sequence_size(self):
-        total_sequence_size = 1
-        if self.sequence is not None:
-            total_sequence_size = total_sequence_size + len(self.sequence)
-
-        return total_sequence_size
 
     def get_hash_value(self):
         return self.hash_value
@@ -91,54 +83,17 @@ class Function():
     def get_memory(self):
         return self.memory
 
-    def get_resource_adjust_direction(self, resource):
-        return self.resource_adjust_direction[resource]
+    def get_cpu_user_defined(self):
+        return self.params.cpu_user_defined
 
-    def set_resource_adjust(self, resource, adjust):
-        # Adjust resources
-        next_cpu = self.cpu
-        next_memory = self.memory
-        
-        if resource == "cpu":
-            next_cpu = np.clip(
-                next_cpu + adjust, 
-                self.params.cpu_least_hint, 
-                self.params.cpu_cap_per_function
-            )
-        elif resource == "memory":
-            next_memory = np.clip(
-                next_memory + adjust, 
-                self.params.memory_least_hint, 
-                self.params.memory_cap_per_function
-            )
-            
-        self.set_function(next_cpu, next_memory)
-        
-        # Set resource adjust direction if not touched yet
-        if self.resource_adjust_direction[resource] == 0:
-            self.resource_adjust_direction[resource] = adjust
+    def get_memory_user_defined(self):
+        return self.params.memory_user_defined
 
-    def validate_resource_adjust(self, resource, adjust): 
-        # Implicit invalid action
-        if resource == "cpu":
-            if self.cpu + adjust > self.params.cpu_cap_per_function or \
-                self.cpu + adjust < self.params.cpu_least_hint: 
-                    return False 
-        elif resource == "memory":
-            if self.memory + adjust > self.params.memory_cap_per_function or \
-                self.memory + adjust < self.params.memory_least_hint: 
-                return False 
-
-        if self.resource_adjust_direction[resource] == 0: # Not touched yet
-            return True   
-        elif self.resource_adjust_direction[resource] == adjust: # Correct direction as usual
-            return True
-        else: # Implicit invalid action: wrong direction
-            return False
-            
-    def reset_resource_adjust_direction(self):
-        self.resource_adjust_direction["cpu"] = 0
-        self.resource_adjust_direction["memory"] = 0
+    def get_min_duration(self):
+        return self.params.min_duration
+    
+    def get_baseline_duration(self):
+        return self.baseline_duration
 
 
 class Request():
@@ -194,7 +149,16 @@ class Request():
         return self.progress
 
     def get_completion_time(self):
-        return self.progress
+        return self.progress + self.waiting
+
+    def get_completion_time_slo(self):
+        return self.get_completion_time() / self.profile.get_baseline_duration()
+
+    def get_cpu_slo(self):
+        return self.get_cpu() / self.profile.get_cpu_user_defined()
+
+    def get_memory_slo(self):
+        return self.get_memory() / self.profile.get_memory_user_defined()
     
     def get_status(self):
         return self.status
@@ -298,35 +262,35 @@ class RequestRecord():
             self.undone_request_record_per_function[function_id].remove(request)
 
     def get_total_size(self):
-        total_size = len(self.total_request_record)
-        return total_size
+        return len(self.total_request_record)
 
     def get_undone_size(self):
-        undone_size = len(self.undone_request_record)
-        return undone_size
+        return len(self.undone_request_record)
 
     def get_success_size(self):
-        success_size = len(self.success_request_record)
-        return success_size
+        return len(self.success_request_record)
 
     def get_timeout_size(self):
-        timeout_size = len(self.timeout_request_record)
-        return timeout_size
+        return len(self.timeout_request_record)
 
-    def get_current_completion_time(self, done_time):
-        total_completion_time = 0
+    def get_avg_completion_time_slo(self):
+        request_num = 0
+        total_completion_time_slo = 0
 
-        # Query success requests
         for request in self.success_request_record:
-            if request.get_done_time() == done_time:
-                total_completion_time = total_completion_time + request.get_completion_time()
-        
-        # Query timeout requests
-        for request in self.timeout_request_record:
-            if request.get_done_time() == done_time:
-                total_completion_time = total_completion_time + request.get_completion_time()
+            request_num = request_num + 1
+            total_completion_time_slo = total_completion_time_slo + request.get_completion_time_slo()
 
-        return total_completion_time
+        for request in self.timeout_request_record:
+            request_num = request_num + 1
+            total_completion_time_slo = total_completion_time_slo + request.get_completion_time_slo()
+
+        if request_num == 0:
+            avg_completion_time_slo = 0
+        else:
+            avg_completion_time_slo = total_completion_time_slo / request_num
+
+        return avg_completion_time_slo
 
     def get_avg_completion_time(self):
         request_num = 0
@@ -347,25 +311,6 @@ class RequestRecord():
 
         return avg_completion_time
 
-    def get_avg_interval(self):
-        total_interval = 0
-        num = 0
-        for i in range(len(self.total_request_record)):
-            if i < len(self.total_request_record) - 1:
-                old_request = self.total_request_record[i]
-                new_request = self.total_request_record[i+1]
-
-                if interval > 0:
-                    total_interval = total_interval + new_request.get_invoke_time() - old_request.get_invoke_time()
-                    num = num + 1
-
-        if num == 0:
-            avg_interval = 0
-        else:
-            avg_interval = total_interval / num
-
-        return avg_interval
-
     def get_total_size_per_function(self, function_id):
         total_size_per_function = len(self.total_request_record_per_function[function_id])
         return total_size_per_function
@@ -381,6 +326,139 @@ class RequestRecord():
     def get_timeout_size_per_function(self, function_id):
         timeout_size_per_function = len(self.timeout_request_record_per_function[function_id])
         return timeout_size_per_function
+
+    def get_avg_cpu_per_function(self, function_id):
+        request_num = 0
+        total_cpu = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_cpu = total_cpu + request.get_cpu()
+
+        for request in self.timeout_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_cpu = total_cpu + request.get_cpu()
+        
+        if request_num == 0:
+            avg_cpu_per_function = 0
+        else:
+            avg_cpu_per_function = total_cpu / request_num
+
+        return avg_cpu_per_function
+
+    def get_avg_cpu_slo_per_function(self, function_id):
+        request_num = 0
+        total_cpu_slo = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_cpu_slo = total_cpu_slo + request.get_cpu_slo()
+
+        for request in self.timeout_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_cpu_slo = total_cpu_slo + request.get_cpu_slo()
+        
+        if request_num == 0:
+            avg_cpu_slo_per_function = 0
+        else:
+            avg_cpu_slo_per_function = total_cpu_slo / request_num
+
+        return avg_cpu_slo_per_function
+
+    def get_avg_memory_per_function(self, function_id):
+        request_num = 0
+        total_memory = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_memory = total_memory + request.get_memory()
+
+        for request in self.timeout_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_memory = total_memory + request.get_memory()
+        
+        if request_num == 0:
+            avg_memory_per_function = 0
+        else:
+            avg_memory_per_function = total_memory / request_num
+
+        return avg_memory_per_function
+
+    def get_avg_memory_slo_per_function(self, function_id):
+        request_num = 0
+        total_memory_slo = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_memory_slo = total_memory_slo + request.get_memory_slo()
+
+        for request in self.timeout_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_memory_slo = total_memory_slo + request.get_memory_slo()
+        
+        if request_num == 0:
+            avg_memory_slo_per_function = 0
+        else:
+            avg_memory_slo_per_function = total_memory_slo / request_num
+
+        return avg_memory_slo_per_function
+
+    def get_avg_execution_time_per_function(self, function_id):
+        request_num = 0
+        total_execution_time = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_execution_time = total_execution_time + request.get_progress_time()
+
+        for request in self.timeout_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_execution_time = total_execution_time + request.get_progress_time()
+        
+        if request_num == 0:
+            avg_execution_time_per_function = 0
+        else:
+            avg_execution_time_per_function = total_execution_time / request_num
+
+        return avg_execution_time_per_function
+
+    def get_avg_waiting_time_per_function(self, function_id):
+        request_num = 0
+        total_waiting_time = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_waiting_time = total_waiting_time + request.get_waiting_time()
+
+        for request in self.timeout_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_waiting_time = total_waiting_time + request.get_waiting_time()
+        
+        if request_num == 0:
+            avg_waiting_time_per_function = 0
+        else:
+            avg_waiting_time_per_function = total_waiting_time / request_num
+
+        return avg_waiting_time_per_function
+
+    def get_avg_completion_time_slo_per_function(self, function_id):
+        request_num = 0
+        total_completion_time_slo = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_completion_time_slo = total_completion_time_slo + request.get_completion_time_slo()
+
+        for request in self.timeout_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_completion_time_slo = total_completion_time_slo + request.get_completion_time_slo()
+        
+        if request_num == 0:
+            avg_completion_time_slo_per_function = 0
+        else:
+            avg_completion_time_slo_per_function = total_completion_time_slo / request_num
+
+        return avg_completion_time_slo_per_function
 
     def get_avg_completion_time_per_function(self, function_id):
         request_num = 0
@@ -404,14 +482,13 @@ class RequestRecord():
     def get_avg_interval_per_function(self, function_id):
         total_interval = 0
         num = 0
-        for i in range(len(self.total_request_record_per_function[function_id])):
+        for i, request in enumerate(self.total_request_record_per_function[function_id]):
             if i < len(self.total_request_record_per_function[function_id]) - 1:
-                old_request = self.total_request_record_per_function[function_id][i]
-                new_request = self.total_request_record_per_function[function_id][i+1]
-                interval = new_request.get_invoke_time() - old_request.get_invoke_time()
+                next_request = self.total_request_record_per_function[function_id][i+1]
+                interval = next_request.get_invoke_time() - request.get_invoke_time()
 
                 if interval > 0:
-                    total_interval = total_interval + new_request.get_invoke_time() - old_request.get_invoke_time()
+                    total_interval = total_interval + interval
                     num = num + 1
 
         if num == 0:
@@ -421,16 +498,13 @@ class RequestRecord():
 
         return avg_interval_per_function
 
-    def get_is_cold_start_per_function(self, function_id):
-        if self.get_total_size_per_function(function_id) == 0:
-            is_cold_start = True
+    def get_avg_invoke_num_per_function(self, function_id, system_time):
+        if system_time == 0:
+            avg_invoke_num_per_function = 0
         else:
-            is_cold_start = self.total_request_record_per_function[function_id][-1].get_is_cold_start()
+            avg_invoke_num_per_function = self.get_total_size_per_function(function_id) / system_time
 
-        if is_cold_start is False:
-            return 0
-        else:
-            return 1
+        return avg_invoke_num_per_function
 
     def get_total_request_record(self):
         return self.total_request_record
@@ -548,19 +622,18 @@ class Cache():
     Temporarily keeps function instances alive to enable warm-start
     """
 
-    def __init__(
-        self,
-        keep_alive_window=60
-    ):
+    def __init__(self, keep_alive_window):
         self.keep_alive_window = keep_alive_window
-        self.cache = []
+        self.cache = {}
     
     def step(self, request_list, system_time):
         # Terminate function instances that exceed keep alive window
         terminate_list = []
-        for request in self.cache:
-            if system_time - request.get_invoke_time() > self.keep_alive_window:
-                terminate_list.append(request)
+        for function_id in self.cache.keys():
+            cache_per_function = self.cache[function_id]
+            for request in cache_per_function:
+                if system_time - request.get_done_time() > self.keep_alive_window:
+                    terminate_list.append(request)
 
         self.delete_requests(terminate_list)
 
@@ -568,23 +641,31 @@ class Cache():
         self.put_requests(request_list)
 
     def reset(self):
-        self.cache = []
+        self.cache = {}
 
     def delete_requests(self, request_list):
         if isinstance(request_list, Request):
             request = request_list
-            self.cache.remove(request)
+            function_id = request.get_function_id()
+            self.cache[function_id].remove(request)
         else:
             for request in request_list:
-                self.cache.remove(request)
+                function_id = request.get_function_id()
+                self.cache[function_id].remove(request)
     
     def put_requests(self, request_list):
         if isinstance(request_list, Request):
             request = request_list
-            self.cache.append(request)
+            function_id = request.get_function_id()
+            if function_id not in self.cache:
+                self.cache[function_id] = []
+            self.cache[function_id].append(request)
         else:
             for request in request_list:
-                self.cache.append(request)
+                function_id = request.get_function_id()
+                if function_id not in self.cache:
+                    self.cache[function_id] = []
+                self.cache[function_id].append(request)
 
     def get_cache(self):
         return self.cache
@@ -592,23 +673,51 @@ class Cache():
     def get_resources_in_use(self):
         cpu_in_use = 0
         memory_in_use = 0
-        for request in self.cache:
-            cpu_in_use = cpu_in_use + request.get_cpu()
-            memory_in_use = memory_in_use + request.get_memory()
+        for function_id in self.cache.keys():
+            for request in self.cache[function_id]:
+                cpu_in_use = cpu_in_use + request.get_cpu()
+                memory_in_use = memory_in_use + request.get_memory()
             
         return cpu_in_use, memory_in_use
+
+    def get_n_alive_instances(self, function_id):
+        if function_id in self.cache:
+            n_alive_instances = len(self.cache[function_id])
+        else:
+            n_alive_instances = 0
+
+        return n_alive_instances
+
+    def get_warm_start_instance(self, request_to_schedule):
+        function_id = request_to_schedule.get_function_id()
+        warm_start_request_to_remove = None
+        min_done_time = 114514
+
+        if self.get_n_alive_instances(function_id) > 0:
+            for request in self.cache[function_id]:
+                if request.get_cpu() > request_to_schedule.get_cpu() and \
+                request.get_memory() > request_to_schedule.get_memory() and \
+                min_done_time > request.get_done_time():
+                    warm_start_request_to_remove = request
+                    min_done_time = request.get_done_time()
+
+        return warm_start_request_to_remove
+    
+    def get_cold_start_queue(self):
+        cold_start_queue = queue.PriorityQueue()
+        for function_id in self.cache.keys():
+            for request in self.cache[function_id]:
+                cold_start_queue.put(Prioritize(-request.get_done_time(), request))
+
+        return cold_start_queue
 
 
 class Registry():
     """
-    Where functions processed, used by FaaSEnv
+    Registry processes functions
     """
     
-    def __init__(
-        self, 
-        registry_size=100
-    ):
-        self.registry_size = registry_size
+    def __init__(self):
         self.registry = []
         
     def step(self, system_time):
@@ -632,8 +741,12 @@ class Registry():
         self.registry = []            
     
     def delete_requests(self, request_list):
-        for request in request_list:
+        if isinstance(request_list, Request):
+            request = request_list
             self.registry.remove(request)
+        else:
+            for request in request_list:
+                self.registry.remove(request)
     
     def put_requests(self, request_list):
         if isinstance(request_list, Request):
@@ -646,29 +759,25 @@ class Registry():
     def get_registry(self):
         return self.registry
                 
-    def get_size(self):
-        return self.registry_size
-    
-    def get_current_len(self):
+    def get_current_size(self):
         return len(self.registry)
     
     def get_resources_in_use(self):
         cpu_in_use = 0
         memory_in_use = 0
         for request in self.registry:
-            cpu_in_use = cpu_in_use + request.profile.cpu
-            memory_in_use = memory_in_use + request.profile.memory
+            cpu_in_use = cpu_in_use + request.get_cpu()
+            memory_in_use = memory_in_use + request.get_memory()
             
         return cpu_in_use, memory_in_use
     
 
 class Queue():
     """
-    Where functions waiting for entering registry, used by FaaSEnv
+    Queue temporarily stores function invocations
     """
     
-    def __init__(self, size=114514):
-        self.size = size
+    def __init__(self):
         self.queue = []
         
     def step(self, system_time):
@@ -690,8 +799,12 @@ class Queue():
         self.queue = []
     
     def delete_requests(self, request_list):
-        for request in request_list:
+        if isinstance(request_list, Request):
+            request = request_list
             self.queue.remove(request)
+        else:
+            for request in request_list:
+                self.queue.remove(request)
 
     def put_requests(self, request_list):
         if isinstance(request_list, Request):
@@ -704,23 +817,20 @@ class Queue():
     def get_queue(self):
         return self.queue
                 
-    def get_size(self):
-        return self.size
-                
-    def get_current_len(self):
+    def get_current_size(self):
         return len(self.queue)
 
 
-class ResourceManager():
+class Manager():
     """
-    A resource manager to manage CPU and memory resources, each Server posseses one
+    A manager that manages function life cycles in each Server
     """
     
     def __init__(
         self, 
-        user_cpu=8, 
-        user_memory=8,
-        keep_alive_window=60
+        user_cpu, 
+        user_memory,
+        keep_alive_window
     ):
         self.registry = Registry()
         self.cache = Cache(keep_alive_window=keep_alive_window)
@@ -728,10 +838,10 @@ class ResourceManager():
         self.user_cpu = user_cpu
         self.user_memory = user_memory
 
-    def put_requests(self, system_time, request):
-        if self.check_availability(request) is True and self.queue.get_current_len() == 0:
+    def put_requests(self, request):
+        if self.check_availability(request) is True and self.queue.get_current_size() == 0:
             # Determine if it's a cold start or warm start before entering in registry
-            self.check_cold_start(system_time, request)
+            self.check_cold_start(request)
             self.registry.put_requests(request)
         else:
             self.queue.put_requests(request)
@@ -741,7 +851,7 @@ class ResourceManager():
 
     def get_user_memory(self):
         return self.user_memory
-        
+
     def get_resources_total(self):
         return self.user_cpu, self.user_memory
     
@@ -779,23 +889,13 @@ class ResourceManager():
             return False
 
     # Check if a request is cold start
-    def check_cold_start(self, system_time, request_to_schedule):
-        warm_start_request_to_remove = None
-        cold_start_queue = queue.PriorityQueue()
-
-        # Retrieve available instance if warm start
-        for request in self.cache.get_cache():
-            if request.get_function_id() == request_to_schedule.get_function_id() and \
-                request.get_cpu() == request_to_schedule.get_cpu() and \
-                    request.get_memory() == request_to_schedule.get_memory():
-                    warm_start_request_to_remove = request
-                    break
-            else:
-                alive_time = system_time - request.get_invoke_time()
-                cold_start_queue.put(Prioritize(-alive_time, request))
+    def check_cold_start(self, request_to_schedule):
+        # Check if there will be a warm start by any chances
+        warm_start_request_to_remove = self.cache.get_warm_start_instance(request_to_schedule)
 
         # Check if any other instances in cache should be terminated when cold start
         if warm_start_request_to_remove is None:
+            cold_start_queue = self.cache.get_cold_start_queue()
             registry_cpu_in_use, registry_memory_in_use = self.get_registry_resources_in_use()
             cache_cpu_in_use, cache_memory_in_use = self.get_cache_resources_in_use()
 
@@ -817,18 +917,18 @@ class ResourceManager():
             request_to_schedule.set_is_cold_start(False)
     
     # Try to import queue to registry if available
-    def try_import_queue_to_registry(self, system_time):
+    def try_import_queue_to_registry(self):
         request_ready_queue = queue.PriorityQueue()
         request_to_remove_list = []
         for request in self.queue.get_queue():
             if self.check_availability(request) is True:
                 request_ready_queue.put(Prioritize(-request.get_waiting_time(), request))
-
+        
         while request_ready_queue.empty() is False:
             request = request_ready_queue.get().item
             if self.check_availability(request):
                 # Determine if it's a cold start or warm start before entering in registry
-                self.check_cold_start(system_time, request)
+                self.check_cold_start(request)
                 self.registry.put_requests(request)
                 request_to_remove_list.append(request)
 
@@ -845,7 +945,7 @@ class ResourceManager():
         queue_request_list, num_timeout_queue = self.queue.step(system_time)
         
         # Try to import queue if available   
-        self.try_import_queue_to_registry(system_time)
+        self.try_import_queue_to_registry()
 
         # Aggregate results
         request_to_update_list = registry_request_list + queue_request_list
@@ -866,9 +966,9 @@ class Server():
 
     def __init__(
         self, 
-        user_cpu=8, 
-        user_memory=8,
-        keep_alive_window=60
+        user_cpu, 
+        user_memory,
+        keep_alive_window
     ):
         self.server_id = uuid.uuid1()
 
@@ -876,24 +976,24 @@ class Server():
         self.user_memory = user_memory
         self.keep_alive_window = keep_alive_window
 
-        self.resource_manager = ResourceManager(
+        self.manager = Manager(
             user_cpu=self.user_cpu,
             user_memory=self.user_memory,
             keep_alive_window=self.keep_alive_window
         )
 
     def check_availability(self, request):
-        return self.resource_manager.check_availability(request)
+        return self.manager.check_availability(request)
 
-    def put_requests(self, system_time, request):
-        self.resource_manager.put_requests(system_time, request)
+    def put_requests(self, request):
+        self.manager.put_requests(request)
 
     def step(self, system_time):
-        request_list, num_timeout = self.resource_manager.step(system_time)
+        request_list, num_timeout = self.manager.step(system_time)
         return request_list, num_timeout
 
     def reset(self):
-        self.resource_manager.reset()
+        self.manager.reset()
 
 
 class Cluster():
@@ -903,24 +1003,24 @@ class Cluster():
 
     def __init__(
         self,
-        cluster_size=10,
-        schedule_step_size=3,
-        user_cpu_per_server=8,
-        user_memory_per_server=8,
-        keep_alive_window_per_server=60
+        cluster_size,
+        schedule_step_size,
+        user_cpu_per_server,
+        user_memory_per_server,
+        keep_alive_window
     ):
         self.cluster_size = cluster_size
         self.schedule_step_size = schedule_step_size
         self.user_cpu_per_server = user_cpu_per_server
         self.user_memory_per_server = user_memory_per_server
-        self.keep_alive_window_per_server = keep_alive_window_per_server
+        self.keep_alive_window = keep_alive_window
 
         self.server_pool = []
         for i in range(self.cluster_size):
             server = Server(
                 user_cpu=self.user_cpu_per_server,
                 user_memory=self.user_memory_per_server,
-                keep_alive_window=self.keep_alive_window_per_server
+                keep_alive_window=self.keep_alive_window
             )
             self.server_pool.append(server)
 
@@ -930,16 +1030,35 @@ class Cluster():
     def get_server_pool(self):
         return self.server_pool
 
+    def get_total_in_use_resources(self):
+        total_in_use_cpu = 0
+        total_in_use_memory = 0
+
+        for server in self.server_pool:
+            in_use_cpu, in_use_memory = server.manager.get_registry_resources_in_use()
+
+            total_in_use_cpu = total_in_use_cpu + in_use_cpu
+            total_in_use_memory = total_in_use_memory + in_use_memory
+
+        return total_in_use_cpu, total_in_use_memory
+
     def get_total_available_resources(self):
         total_available_cpu = 0
         total_available_memory = 0
 
         for server in self.server_pool:
-            available_cpu, available_memory = server.resource_manager.get_resources_available()
+            available_cpu, available_memory = server.manager.get_resources_available()
             total_available_cpu = total_available_cpu + available_cpu
             total_available_memory = available_memory + available_memory
 
         return total_available_cpu, total_available_memory
+
+    def get_n_alive_instances(self, function_id):
+        n_alive_instances = 0
+        for server in self.server_pool:
+            n_alive_instances = n_alive_instances + server.manager.get_n_alive_instances(function_id)
+
+        return n_alive_instances
 
     def step(self, system_time):
         total_request_list = []
@@ -953,28 +1072,27 @@ class Cluster():
 
     # A hashing-greedy algorithm based on OpenWhisk load balancer
     # https://github.com/apache/openwhisk/blob/master/core/controller/src/main/scala/org/apache/openwhisk/core/loadBalancer/ShardingContainerPoolBalancer.scala
-    def schedule(self, system_time, request_list):
-        for request in request_list:
-            is_scheduled = False
-            home_server_index = request.profile.get_hash_value() % self.cluster_size
+    def schedule(self, request):
+        is_scheduled = False
+        home_server_index = request.profile.get_hash_value() % self.cluster_size
 
-            # Seek in step
-            i = 0
-            while i <= self.cluster_size - 1:
-                home_server = self.server_pool[home_server_index]
-                if home_server.check_availability(request) is True:
-                    home_server.put_requests(system_time, request)
-                    is_scheduled = True
-                    break
-                else:
-                    home_server_index = (home_server_index + self.schedule_step_size) % self.cluster_size
-                    i = i + 1
+        # Seek in steps
+        i = 0
+        while i <= self.cluster_size - 1:
+            home_server = self.server_pool[home_server_index]
+            if home_server.check_availability(request) is True:
+                home_server.put_requests(request)
+                is_scheduled = True
+                break
+            else:
+                home_server_index = (home_server_index + self.schedule_step_size) % self.cluster_size
+                i = i + 1
 
-            # If none of servers has available resources, randome pick one
-            if is_scheduled is False:
-                random_index = random.randint(0, self.cluster_size - 1)
-                random_server = self.server_pool[random_index]
-                random_server.put_requests(system_time, request)
+        # If none of servers has available resources, randome pick one
+        if is_scheduled is False:
+            random_index = random.randint(0, self.cluster_size - 1)
+            random_server = self.server_pool[random_index]
+            random_server.put_requests(request)
 
     def reset(self):
         for server in self.server_pool:
@@ -993,12 +1111,6 @@ class Profile():
         self.function_profile = function_profile
         self.default_function_profile = cp.deepcopy(function_profile)
 
-        self.sequence_dict = {}
-        for function_id in self.function_profile.keys():
-            function = self.function_profile[function_id]
-            if function.get_sequence() is not None:
-                self.sequence_dict[function_id] = function.get_sequence()
-        
     def put_function(self, function):
         function_id = function.get_function_id()
         self.function_profile[function_id] = function
@@ -1009,33 +1121,67 @@ class Profile():
     def get_size(self):
         return len(self.function_profile)
 
-    def get_sequence_dict(self):
-        return self.sequence_dict
-        
     def reset(self):
         self.function_profile = cp.deepcopy(self.default_function_profile)
         
         
-class Timetable():
+class EventPQ():
     """
-    Dictate which and when functions will be invoked by FaaSEnv
+    A priority queue of events, dictates which and when function will be invoked
     """
     
     def __init__(
         self, 
-        timetable=[]
+        pq,
+        max_timestep
     ):
-        self.timetable = timetable
+        self.pq = pq
+        self.default_pq = cp.deepcopy(pq)
+        self.max_timestep = max_timestep
         
-    def put_timestep(self, row):
-        self.timetable.append(row)
-        
-    def get_timestep(self, timestep):
-        if timestep >= self.get_size():
-            return None
+    def get_event(self):
+        if self.is_empty() is True:
+            return None, None
         else:
-            return self.timetable[timestep]
+            (timestep, counter, function_id) = heapq.heappop(self.pq)
+            return timestep, function_id
     
-    def get_size(self):
-        return len(self.timetable)
+    def get_current_size(self):
+        return len(self.pq)
 
+    def get_total_size(self):
+        return len(self.default_pq)
+
+    def get_max_timestep(self):
+        return self.max_timestep
+
+    def is_empty(self):
+        if len(self.pq) == 0:
+            return True
+        else:
+            return False
+
+    def reset(self):
+        self.pq = cp.deepcopy(self.default_pq)
+
+
+class SystemTime():
+    """
+    Time module for the whole environment
+    """
+    
+    def __init__(self, default_interval):
+        self.system_runtime = 0
+        self.default_interval = default_interval
+
+    def get_system_runtime(self):
+        return self.system_runtime
+
+    def get_default_interval(self):
+        return self.default_interval
+
+    def step(self):
+        self.system_runtime = self.system_runtime + self.default_interval
+
+    def reset(self):
+        self.system_runtime = 0

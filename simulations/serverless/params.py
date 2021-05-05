@@ -1,26 +1,29 @@
-#
-# Experimental settings
-#
+# Environment parameters
+CLUSTER_SIZE = 30
+USER_CPU_PER_SERVER = 8
+USER_MEMORY_PER_SERVER = 64
+CPU_CAP_PER_FUNCTION = 8
+MEMORY_CAP_PER_FUNCTION = 16
+MEMORY_MB_LIMIT = 512
+KEEP_ALIVE_WINDOW = 10
+ENV_INTERVAL_LIMIT = 1
+FAIL_PENALTY = 0
 
-workload_type = "azure"
-max_workload = 1
-max_episode = 1000
-hidden_dims = [32, 16]
-learning_rate = 0.0002
-discount_factor = 1
-ppo_clip = 0.2
-ppo_epoch = 4
-value_loss_coef = 0.5
-entropy_coef = 0.01
-model_save_path = "ckpt/"
-max_timestep = 60
-max_function = 55
-max_server = 20
-cluster_size = 20
-user_cpu_per_server = 64
-user_memory_per_server = 64
-keep_alive_window_per_server = 10
-cpu_cap_per_function = 32
-memory_cap_per_function = 32
-interval = 1
-timeout_penalty = 60000
+# Training parameters
+AZURE_FILE_PATH = "azurefunctions-dataset2019/"
+EXP_TRAIN = [0]
+EXP_EVAL = [0]
+MAX_EPISODE_TRAIN = 5000
+MAX_EPISODE_EVAL = 1
+STATE_DIM = 15 + 2
+ACTION_DIM = 1
+HIDDEN_DIMS = [32, 16]
+LEARNING_RATE = 1e-4
+DISCOUNT_FACTOR = 1
+PPO_CLIP = 0.2
+PPO_EPOCH = 5
+VALUE_LOSS_COEF = 0.5
+ENTROPY_COEF = 1e-3
+MODEL_SAVE_PATH = "ckpt/"
+MODEL_NAME = "max_episode.ckpt"
+# MODEL_NAME = "max_reward_sum.ckpt"

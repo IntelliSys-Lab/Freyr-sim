@@ -1,185 +1,213 @@
 import numpy as np
 import pandas as pd
+import csv
+import random
 import os
 import stat
 import sys
 from glob import glob
+
+import params
 
 
 #
 # Import Azure Functions traces
 #
 
-def load_from_azure(
-    azure_file_path="azurefunctions-dataset2019/"
+def sample_from_azure(
+    azure_file_path,
+    max_exp,
+    max_timestep,
+    min_timestep,
+    max_invoke_per_time,
+    min_invoke_per_time,
+    max_invoke_per_func,
+    min_invoke_per_func,
+    exp_func_list
 ):     
     csv_suffix = ".csv"
 
-    # Memory traces
-    memory_traces = []
-    n_memory_files = ["01", "02", "03", "04", "05", "06", "07", \
-        "08", "09", "10", "11", "12"]
-    memory_prefix = "app_memory_percentiles.anon.d"
-    
-    for n in n_memory_files:
-        df = pd.read_csv(azure_file_path + memory_prefix + n + csv_suffix, index_col="HashApp")
-        memory_traces.append(df)
-
-    memory_df = pd.concat(memory_traces)
-    memory_df = memory_df[~memory_df.index.duplicated()]
-    memory_dict = memory_df.to_dict('index')
-
-    # Duration traces
-    duration_traces = []
-    n_duration_files = ["01", "02", "03", "04", "05", "06", "07", \
-        "08", "09", "10", "11", "12", "13", "14"]
-    duration_prefix = "function_durations_percentiles.anon.d"
-
-    for n in n_duration_files:
-        df = pd.read_csv(azure_file_path + duration_prefix + n + csv_suffix, index_col="HashFunction")
-        duration_traces.append(df)
-
-    duration_df = pd.concat(duration_traces)
-    duration_df = duration_df[~duration_df.index.duplicated()]
-    duration_dict = duration_df.to_dict('index')
-
     # Invocation traces
-    invocation_traces = []
-    n_invocation_files = ["01", "02", "03", "04", "05", "06", "07", \
-        "08", "09", "10", "11", "12", "13", "14"]
+    trace_dict = {}
+    n_invocation_files = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14"]
     invocation_prefix = "invocations_per_function_md.anon.d"
 
     for n in n_invocation_files:
-        df = pd.read_csv(azure_file_path + invocation_prefix + n + csv_suffix, index_col="HashFunction")
-        invocation_traces.append(df)
+        invocation_df = pd.read_csv(azure_file_path + invocation_prefix + n + csv_suffix, index_col="HashFunction")
+        invocation_df = invocation_df[~invocation_df.index.duplicated()]
+        invocation_df_dict = invocation_df.to_dict('index')
 
-    invocation_df = pd.concat(invocation_traces)
-    invocation_df = invocation_df[~invocation_df.index.duplicated()]
-    invocation_dict = invocation_df.to_dict('index')
+        for func_hash in invocation_df_dict.keys():
+            invocation_trace = invocation_df_dict[func_hash]
+            timeline = []
 
-    return memory_dict, duration_dict, invocation_dict
-
-#
-# Sample from trigger distribution 
-#
-
-def sample_from_trigger_dist(
-    memory_dict,
-    duration_dict,
-    invocation_dict,
-    trigger_dist,
-    max_function=50,
-    min_load_per_trace=300,
-    max_load_per_trace=600,
-    max_timestep=60,
-    save_file_path="azurefunctions-dataset2019/",
-    save_file_id=""
-):
-    sampled_memory_traces = {}
-    sampled_duration_traces = {}
-    sampled_invocation_traces = {}
-
-    # Classify based on trigger types
-    trigger_dict = {}
-
-    for func_hash in invocation_dict.keys():
-        trace = invocation_dict[func_hash]
-        trigger = trace["Trigger"]
-        if trigger not in trigger_dict:
-            trigger_dict[trigger] = []
-
-        trace["HashFunction"] = func_hash
-        trigger_dict[trigger].append(trace)
-
-    # Random sample
-    for trigger in trigger_dict.keys():
-        # Apply load limit
-        index_list = []
-
-        done = False
-        while done is False:
-            index = np.random.randint(len(trigger_dict[trigger]))
-            invoke_list = []
-            trace = trigger_dict[trigger][index]
             for timestep in range(max_timestep):
-                invoke_list.append(int(trace["{}".format(timestep+1)]))
+                invoke_num = int(invocation_trace["{}".format(timestep+1)])
 
-            if np.sum(invoke_list) <= max_load_per_trace and np.sum(invoke_list) >= min_load_per_trace and index not in index_list:
-                index_list.append(index)
+                # Verify invocation per time
+                if invoke_num <= max_invoke_per_time and invoke_num >= min_invoke_per_time:
+                    timeline.append(invoke_num)
+                else:
+                    break
 
-            if len(index_list) >= int(max_function * trigger_dist[trigger]) + 1:
-                done = True
+            # Verify invocation per function
+            if np.sum(timeline) <= max_invoke_per_func and np.sum(timeline) >= min_invoke_per_func and len(timeline) == 60:
+                trace_dict[func_hash] = {}
+                trace_dict[func_hash]["invocation_trace"] = timeline
+                trace_dict[func_hash]["HashApp"] = invocation_trace["HashApp"]
+                trace_dict[func_hash]["Trigger"] = invocation_trace["Trigger"]
+            else:
+                continue
 
-        for index in index_list:
-            trace = trigger_dict[trigger][index]
-            func_hash = trace["HashFunction"]
-            app_hash = trace["HashApp"]
+    print("Finish sampling invocation traces!")
 
-            # Save sampled invocation traces
-            sampled_invocation_traces[func_hash] = trace
+    # Memory traces
+    n_memory_files = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]
+    memory_prefix = "app_memory_percentiles.anon.d"
+    
+    for n in n_memory_files:
+        memory_df = pd.read_csv(azure_file_path + memory_prefix + n + csv_suffix, index_col="HashApp")
+        memory_df = memory_df[~memory_df.index.duplicated()]
+        memory_df_dict = memory_df.to_dict('index')
+        
+        for func_hash in trace_dict.keys():
+            app_hash = trace_dict[func_hash]["HashApp"]
+            if app_hash in memory_df_dict:
+                trace_dict[func_hash]["memory_trace"] = memory_df_dict[app_hash]
 
-    # Save sampled duration traces
-    for func_hash in sampled_invocation_traces.keys():
-        if func_hash in duration_dict:
-            trace = duration_dict[func_hash]
-            trace["HashFunction"] = func_hash
-            sampled_duration_traces[func_hash] = trace
+    print("Finish matching memory traces!")
 
-    # Regularize duration and invocation traces
-    while len(sampled_duration_traces) != len(sampled_invocation_traces):
-        if len(sampled_duration_traces) < len(sampled_invocation_traces):
-            redundant_list = []
-            for func_hash in sampled_invocation_traces.keys():
-                if func_hash not in sampled_duration_traces:
-                    redundant_list.append(func_hash)
+    # Duration traces
+    n_duration_files = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14"]
+    duration_prefix = "function_durations_percentiles.anon.d"
 
-            for func_hash in redundant_list:
-                sampled_invocation_traces.pop(func_hash)
+    for n in n_duration_files:
+        duration_df = pd.read_csv(azure_file_path + duration_prefix + n + csv_suffix, index_col="HashFunction")
+        duration_df = duration_df[~duration_df.index.duplicated()]
+        duration_df_dict = duration_df.to_dict('index')
 
-        elif len(sampled_duration_traces) > len(sampled_invocation_traces):
-            redundant_list = []
-            for func_hash in sampled_duration_traces.keys():
-                if func_hash not in sampled_invocation_traces:
-                    redundant_list.append(func_hash)
-                
-                for func_hash in redundant_list:
-                    sampled_duration_traces.pop(func_hash)
+        for func_hash in trace_dict.keys():
+            if func_hash in duration_df_dict:
+                trace_dict[func_hash]["duration_trace"] = duration_df_dict[func_hash]
 
-    # Save sampled memory traces 
-    redundant_list = []
-    for func_hash in sampled_duration_traces.keys():
-        app_hash = sampled_duration_traces[func_hash]["HashApp"]
-        if app_hash not in memory_dict:
-            redundant_list.append(func_hash)
-        else:
-            trace = memory_dict[app_hash]
-            trace["HashApp"] = app_hash
-            sampled_memory_traces[app_hash] = trace
+    print("Finish matching duration traces!")
 
-    for func_hash in redundant_list:
-        sampled_invocation_traces.pop(func_hash)
-        sampled_duration_traces.pop(func_hash)
+    # Remove incomplete traces
+    func_remove_list = []
+    for func_hash in trace_dict.keys():
+        if "invocation_trace" not in trace_dict[func_hash] or \
+            "memory_trace" not in trace_dict[func_hash] or \
+            "duration_trace" not in trace_dict[func_hash]:
+            func_remove_list.append(func_hash)
 
-    # Write to CSV
-    new_memory_df = pd.DataFrame.from_records(list(sampled_memory_traces.values()))
-    new_duration_df = pd.DataFrame.from_records(list(sampled_duration_traces.values()))
-    drop_list = [] # Drop timesteps that are beyond max timestep
-    for i in range(max_timestep, 1440):
-        drop_list.append("{}".format(i+1))
-    new_invocation_df = pd.DataFrame.from_records(list(sampled_invocation_traces.values())).drop(drop_list, axis=1)
+    for func_hash in func_remove_list:
+        trace_dict.pop(func_hash)
 
-    new_memory_df.to_csv(
-        save_file_path + "sampled_memory_traces_{}.csv".format(save_file_id),
-        index=False
-    )
-    new_duration_df.to_csv(
-        save_file_path + "sampled_duration_traces_{}.csv".format(save_file_id),
-        index=False
-    )
-    new_invocation_df.to_csv(
-        save_file_path + "sampled_invocation_traces_{}.csv".format(save_file_id),
-        index=False
-    )
+    # Adapt to experimental traces
+    # print("trace_dict length: {}".format(len(trace_dict)))
+    trigger_count = {
+        "http": 0,
+        "queue": 0,
+        "event": 0,
+        "orchestration": 0,
+        "timer": 0,
+        "storage": 0,
+        "others": 0
+    }
+
+    memory_trace_header = ["HashFunction", "SampleCount", "AverageAllocatedMb", "AverageAllocatedMb_pct1", \
+        "AverageAllocatedMb_pct5", "AverageAllocatedMb_pct25", "AverageAllocatedMb_pct50", "AverageAllocatedMb_pct75", \
+        "AverageAllocatedMb_pct95", "AverageAllocatedMb_pct99", "AverageAllocatedMb_pct100", "Ideal"]
+
+    duration_trace_header = ["HashFunction", "Average", "Count", "Minimum", "Maximum", "percentile_Average_0", \
+        "percentile_Average_1", "percentile_Average_25", "percentile_Average_50", "percentile_Average_75", \
+        "percentile_Average_99", "percentile_Average_100"]
+
+    for i in range(max_exp):
+        func_hash_list = random.sample(list(trace_dict.keys()), k=len(exp_func_list))
+        random_timestep = random.randint(min_timestep, max_timestep)
+
+        invocation_trace_csv = []
+        memory_trace_csv = []
+        duration_trace_csv = []
+
+        invocation_trace_header = ["HashFunction", "Trigger"] + list(range(1, random_timestep+1))
+        invocation_trace_csv.append(invocation_trace_header)
+        memory_trace_csv.append(memory_trace_header)
+        duration_trace_csv.append(duration_trace_header)
+
+        for index, function_id in enumerate(exp_func_list):
+            func_hash = func_hash_list[index]
+
+            invocation_trace = trace_dict[func_hash]["invocation_trace"][:random_timestep]
+            invocation_trace.insert(0, trace_dict[func_hash]["Trigger"])
+            invocation_trace.insert(0, function_id)
+            invocation_trace_csv.append(invocation_trace)
+
+            memory_trace = [function_id]
+            memory_trace_dict = trace_dict[func_hash]["memory_trace"]
+            for header in memory_trace_header:
+                if header != "HashFunction" and header != "Ideal":
+                    memory_trace.append(memory_trace_dict[header])
+                elif header == "Ideal":
+                    memory_trace.append(
+                        random.choice(
+                            [
+                                memory_trace_dict["AverageAllocatedMb_pct1"],
+                                memory_trace_dict["AverageAllocatedMb_pct5"],
+                                memory_trace_dict["AverageAllocatedMb_pct25"],
+                                memory_trace_dict["AverageAllocatedMb_pct50"],
+                                memory_trace_dict["AverageAllocatedMb_pct75"],
+                                memory_trace_dict["AverageAllocatedMb_pct95"],
+                                memory_trace_dict["AverageAllocatedMb_pct99"],
+                                memory_trace_dict["AverageAllocatedMb_pct100"]
+                            ]
+                        )
+                    )
+
+            memory_trace_csv.append(memory_trace)
+
+            duration_trace = [function_id]
+            duration_trace_dict = trace_dict[func_hash]["duration_trace"]
+            for header in duration_trace_header:
+                if header != "HashFunction":
+                    duration_trace.append(duration_trace_dict[header])
+            duration_trace_csv.append(duration_trace)
+
+            if trace_dict[func_hash]["Trigger"] == "http":
+                trigger_count["http"] = trigger_count["http"] + 1
+            elif trace_dict[func_hash]["Trigger"] == "queue":
+                trigger_count["queue"] = trigger_count["queue"] + 1
+            elif trace_dict[func_hash]["Trigger"] == "event":
+                trigger_count["event"] = trigger_count["event"] + 1
+            elif trace_dict[func_hash]["Trigger"] == "orchestration":
+                trigger_count["orchestration"] = trigger_count["orchestration"] + 1
+            elif trace_dict[func_hash]["Trigger"] == "timer":
+                trigger_count["timer"] = trigger_count["timer"] + 1
+            elif trace_dict[func_hash]["Trigger"] == "storage":
+                trigger_count["storage"] = trigger_count["storage"] + 1
+            elif trace_dict[func_hash]["Trigger"] == "others":
+                trigger_count["others"] = trigger_count["others"] + 1
+
+        with open(azure_file_path + "sampled_invocation_traces_{}.csv".format(i), "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerows(invocation_trace_csv)
+
+        with open(azure_file_path + "sampled_memory_traces_{}.csv".format(i), "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerows(memory_trace_csv)
+
+        with open(azure_file_path + "sampled_duration_traces_{}.csv".format(i), "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerows(duration_trace_csv)
+
+    with open(azure_file_path + "sampled_trigger_dist.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        trigger_dist_csv = []
+        for trigger in trigger_count.keys():
+            trigger_dist_csv.append([trigger, trigger_count[trigger]])
+
+        writer.writerows(trigger_dist_csv)
 
 #
 # Clean old sample files
@@ -193,49 +221,37 @@ def clean_old_samples(
         try:
             os.remove(file_name)
         except EnvironmentError:
-            print("Demand permission to {}".format(file_name))
+            print("Require permission to {}".format(file_name))
             os.chmod(file_name, stat.S_IWRITE)
             os.remove(file_name)
 
 
 if __name__ == "__main__":
     azure_file_path = "azurefunctions-dataset2019/"
-    max_workload = 1
-    max_function = 50
+    max_exp = 1
+    max_functions = 100
     max_timestep = 60
-    min_load_per_trace = 1
-    max_load_per_trace = 1000
-    trigger_dist = {
-        "http": 0.359,
-        "queue": 0.335,
-        "event": 0.247,
-        "orchestration": 0.023,
-        "timer": 0.02,
-        "storage": 0.007,
-        "others": 0.01
-    }
+    min_timestep = 60
+    max_invoke_per_time = 10
+    min_invoke_per_time = 0
+    max_invoke_per_func = 20
+    min_invoke_per_func = 1
+    exp_func_list = [function_index for function_index in range(max_functions)]
 
     print("Clean old sample files...")
     clean_old_samples(dir_name=azure_file_path, file_pattern="sampled_*.csv")
 
-    print("Loading Azure Functions traces...")
-    memory_dict, duration_dict, invocation_dict = load_from_azure(azure_file_path)
+    print("Load Azure Functions traces...")
+    sample_from_azure(
+        azure_file_path=azure_file_path,
+        max_exp=max_exp,
+        max_timestep=max_timestep,
+        min_timestep=min_timestep,
+        max_invoke_per_time=max_invoke_per_time,
+        min_invoke_per_time=min_invoke_per_time,
+        max_invoke_per_func=max_invoke_per_func,
+        min_invoke_per_func=min_invoke_per_func,
+        exp_func_list=exp_func_list
+    )
     
-    print("Sampling from trigger distribution...")
-    for i in range(max_workload):
-        print("Sampling {} workload...".format(i))
-        sample_from_trigger_dist(
-            memory_dict=memory_dict,
-            duration_dict=duration_dict,
-            invocation_dict=invocation_dict,
-            trigger_dist=trigger_dist,
-            max_function=max_function,
-            max_timestep=max_timestep,
-            min_load_per_trace=min_load_per_trace,
-            max_load_per_trace=max_load_per_trace,
-            save_file_path="azurefunctions-dataset2019/",
-            save_file_id=i
-        )
-
     print("Sampling finished!")
-    

@@ -3,8 +3,9 @@ import gym
 from gym import spaces, logger
 import numpy as np
 import torch
-from gym.envs.serverless.faas_utils import Request, Cluster, RequestRecord, ResourceUtilsRecord
-        
+from gym.envs.serverless.faas_utils import SystemTime, Request, Cluster, RequestRecord, ResourceUtilsRecord
+from gym.envs.serverless.workload_generator import WorkloadGenerator
+
         
 class FaaSEnv(gym.Env):
     """
@@ -13,23 +14,33 @@ class FaaSEnv(gym.Env):
     
     def __init__(
         self,
-        params,
-        profile,
-        timetable
+        workload_params,
+        env_params
     ):
-        self.params = params
-        self.profile = profile
-        self.timetable = timetable
+        self.workload_params = workload_params
+        self.env_params = env_params
         
+        # Set up workloads
+        self.workload_generator = WorkloadGenerator(
+            exp_id=self.workload_params.exp_id,
+            azure_file_path=self.workload_params.azure_file_path,
+            cpu_cap_per_function=self.env_params.cpu_cap_per_function,
+            memory_cap_per_function=self.env_params.memory_cap_per_function,
+            memory_mb_limit=self.env_params.memory_mb_limit
+        )
+        self.profile, self.event_pq = self.workload_generator.generate_workload()
+        
+        # Set up cluster
         self.cluster = Cluster(
-            cluster_size=self.params.cluster_size,
-            user_cpu_per_server=self.params.user_cpu_per_server,
-            user_memory_per_server=self.params.user_memory_per_server,
-            keep_alive_window_per_server=self.params.keep_alive_window_per_server
+            cluster_size=self.env_params.cluster_size,
+            schedule_step_size=7,
+            user_cpu_per_server=self.env_params.user_cpu_per_server,
+            user_memory_per_server=self.env_params.user_memory_per_server,
+            keep_alive_window=self.env_params.keep_alive_window
         )
 
-        # Set up system time 
-        self.system_time = 0
+        # Set up system time module
+        self.system_time = SystemTime(self.env_params.interval)
 
         # Set up request record
         self.request_record = RequestRecord(self.profile.get_function_profile())
@@ -37,166 +48,55 @@ class FaaSEnv(gym.Env):
         # Set up resource utils record
         self.resource_utils_record = ResourceUtilsRecord(self.cluster.get_cluster_size())
         
-        # Define action space
-        # Action space size: 4 * f + 1
-        #
-        # [
-        #  void, 
-        #  function_1_decrease_cpu, 
-        #  function_1_increase_cpu,
-        #  function_1_decrease_memory,
-        #  function_1_increase_memory,
-        #  .
-        #  .
-        #  .
-        #  function_f_decrease_cpu, 
-        #  function_f_increase_cpu,
-        #  function_f_decrease_memory,
-        #  function_f_increase_memory,
-        # ]
-        self.action_dim = 4 * self.params.max_function + 1
-        
-        # Define observation space
-        # Observation space size: 1 + 2 * n + 8 * m
-        #
-        # [
-        #  num_in_fight_requests, 
-        #  server_1_available_cpu, 
-        #  server_1_available_memory,
-        #  .
-        #  .
-        #  .
-        #  server_n_available_cpu, 
-        #  server_n_available_memory,
-        #  function_1_avg_interval,
-        #  function_1_avg_completion_time,
-        #  function_1_is_cold_start,
-        #  function_1_cpu,
-        #  function_1_memory,
-        #  function_1_cpu_direction,
-        #  function_1_memory_direction,
-        #  function_1_invoke_num,
-        #  .
-        #  .
-        #  .
-        #  function_m_avg_interval,
-        #  function_m_avg_completion_time,
-        #  function_m_is_cold_start
-        #  function_m_cpu,
-        #  function_m_memory,
-        #  function_m_cpu_direction,
-        #  function_m_memory_direction,
-        #  function_m_invoke_num,
-        # ]
-        self.observation_dim = 1 + 2 * self.params.max_server + 8 * self.params.max_function
+    #
+    # Decode action
+    #
     
-    #
-    # Decode discrete action into resource change
-    #
-    def decode_action(self, action):
-        next_timestep = self.timetable.get_timestep(self.system_time)
-        next_timestep_list = list(next_timestep.keys())
-        function_invoke_list = []
-        for i, function_id in enumerate(next_timestep_list):
-            invoke_num = next_timestep[function_id]
-            if invoke_num > 0:
-                function_invoke_list.append(i)
-
-        function_index = int(action/4)
-        if function_index not in function_invoke_list: # Implicit invalid action
-            function_id = None
-            resource = None
-            adjust = None
-            print("Exceed function invoke list!")
-            print("action: {}".format(action))
-            print("function_invoke_list len: {}, function_index: {}".format(len(function_invoke_list), function_index))
-            sys.exit()
+    def decode_action(self, index):
+        if index is not None:
+            action = {}
+            action["cpu"] = int(index / self.env_params.memory_cap_per_function) + 1
+            action["memory"] = int(index % self.env_params.memory_cap_per_function) + 1
         else:
-            function_id = next_timestep_list[function_index]
-            adjust = 0
-            
-            if action % 4 == 0:
-                resource = "cpu" # CPU
-                adjust = -1 # Decrease one slot
-            elif action % 4 == 1:
-                resource = "cpu" # CPU
-                adjust = 1 # Increase one slot
-            elif action % 4 == 2:
-                resource = "memory" # Memory
-                adjust = -1 # Decrease one slot
-            elif action % 4 == 3:
-                resource = "memory" # Memory
-                adjust = 1 # Increase one slot
-        
-        return function_id, resource, adjust
-        
+            action = None
+
+        return action
+
+    #
+    # Encode action
+    #
+    
+    def encode_action(self, action):
+        return (action["cpu"] - 1) * self.env_params.memory_cap_per_function + action["memory"] - 1
+
     #
     # Update settings of function profile based on given action
     #
-    def update_function_profile(self, action):
-        function_profile = self.profile.get_function_profile()
 
-        # Greedy RM inputs an action map
-        if isinstance(action, dict): 
-            action_map = action 
-            for function_id in action_map.keys():
-                new_cpu = action_map[function_id]["cpu"]
-                new_memory = action_map[function_id]["memory"]
-                function = function_profile[function_id]
-                function.set_function(new_cpu, new_memory)
-
-                # Set the sequence members as well if it is a function sequence
-                if function.get_sequence() is not None:
-                    sequence = function.get_sequence()
-                    for member_id in sequence:
-                        function_profile[member_id].set_function(new_cpu, new_memory)
-            
-            # Always invalid actions
-            return False
-        else:
-            if action == self.action_dim - 1: # Explicit invalid action
-                return False
-            else:
-                function_id, resource, adjust = self.decode_action(action)
-
-                if function_id is None:
-                    return False # Implicit invalid action
-
-                next_timestep = self.timetable.get_timestep(self.system_time)
-                if next_timestep[function_id] == 0:
-                    return False # Implicit invalid action
-
-                function = function_profile[function_id]
-                if function.validate_resource_adjust(resource, adjust) is True:
-                    function.set_resource_adjust(resource, adjust)
-                    return True
-                else:
-                    return False # Implicit invalid action
+    def update_function_profile(self, next_function_id, action):
+        if action is not None:
+            function = self.profile.get_function_profile()[next_function_id]
+            function.set_function(cpu=action["cpu"], memory=action["memory"])
 
     #            
     # Update the cluster
     #
-    def update_cluster(self):
+    
+    def update_cluster(self, next_function_id=None):
         function_profile = self.profile.get_function_profile()
 
-        # Try to import timetable if not finished
-        timestep = self.timetable.get_timestep(self.system_time - 1)
-        request_to_schedule_list = []
+        # Import next event
+        if next_function_id is not None:
+            function = function_profile[next_function_id]
+            request = Request(
+                function=function, 
+                invoke_time=self.system_time.get_system_runtime(),
+            )
 
-        if timestep is not None:
-            for function_id in timestep.keys():
-                function = function_profile[function_id]
-                invoke_num = timestep[function_id]
-                for _ in range(invoke_num):
-                    request = Request(
-                        function=function, 
-                        invoke_time=self.system_time,
-                    )
-                    request_to_schedule_list.append(request)
-
-        self.request_record.put_requests(request_to_schedule_list)
-        self.cluster.schedule(self.system_time, request_to_schedule_list)
-        request_to_remove_list, num_timeout = self.cluster.step(self.system_time)
+            self.request_record.put_requests(request)
+            self.cluster.schedule(request)
+            
+        request_to_remove_list, num_timeout = self.cluster.step(self.system_time.get_system_runtime())
         self.request_record.update_requests(request_to_remove_list)
 
         return num_timeout
@@ -204,10 +104,11 @@ class FaaSEnv(gym.Env):
     #
     # Update resource utilization record
     #
+
     def update_resource_utils(self):
         for index, server in enumerate(self.cluster.get_server_pool()):
             server_id = "server{}".format(index)
-            cpu_util, memory_util = server.resource_manager.get_resource_utils()
+            cpu_util, memory_util = server.manager.get_resource_utils()
             self.resource_utils_record.put_resource_utils(server_id, cpu_util, memory_util)
 
     def get_resource_utils_record(self):
@@ -215,157 +116,149 @@ class FaaSEnv(gym.Env):
         return self.resource_utils_record.get_resource_utils_record()
 
     def get_function_throughput(self):
-        throughput = self.request_record.get_success_size() + self.request_record.get_timeout_size()
-        return throughput
+        return self.request_record.get_success_size() + self.request_record.get_timeout_size()
 
-    def get_function_dict(self):
-        next_timestep = self.timetable.get_timestep(self.system_time)
-        function_profile = self.profile.get_function_profile()
-        function_dict = {}
-        for function_id in function_profile.keys():
-            function = function_profile[function_id]
-            function_dict[function_id] = {}
-
-            avg_completion_time = self.request_record.get_avg_completion_time_per_function(function_id)
-            avg_interval = self.request_record.get_avg_interval_per_function(function_id)
-            cpu = function.get_cpu()
-            memory = function.get_memory()
-            total_sequence_size = function.get_total_sequence_size()
-
-            is_success = False
-            i = 1
-            while i <= self.request_record.get_total_size_per_function(function_id):
-                request = self.request_record.get_total_request_record_per_function(function_id)[-i]
-                if request.get_status() == "success":
-                    is_success = True
-                    break
-
-                i = i + 1
-
-            if next_timestep is not None:
-                invoke_num = next_timestep[function_id]
-            else:
-                invoke_num = 0
-
-            # Prioritize failed functions
-            if is_success is False:
-                priority = -10e8
-            else:
-                priority = - avg_completion_time * invoke_num * total_sequence_size
-
-            function_dict[function_id]["avg_completion_time"] = avg_completion_time
-            function_dict[function_id]["avg_interval"] = avg_interval
-            function_dict[function_id]["cpu"] = cpu
-            function_dict[function_id]["memory"] = memory
-            function_dict[function_id]["total_sequence_size"] = total_sequence_size
-            function_dict[function_id]["is_success"] = is_success
-            function_dict[function_id]["invoke_num"] = invoke_num
-            function_dict[function_id]["priority"] = priority
-
-        return function_dict
-    
     #
-    # Get observation for next timestep
+    # Observation space size: (15 + 2) for each, in total n * m
     #
-    def get_observation(self):
-        function_profile = self.profile.get_function_profile()
-        next_timestep = self.timetable.get_timestep(self.system_time)
+    # [
+    #  [num_inflight_requests, 
+    #   server_in_use_cpu, 
+    #   server_in_use_memory, 
+    #   server_available_cpu, 
+    #   server_available_memory,
+    #   function_avg_execution_time,
+    #   function_avg_waiting_time,
+    #   function_avg_interval,
+    #   function_avg_invoke_num,
+    #   function_avg_completion_time_slo,
+    #   function_avg_cpu_slo,
+    #   function_avg_memory_slo,
+    #   function_cpu_user_defined,
+    #   function_memory_user_defined,
+    #   function_baseline_duration,
+    #   cpu_choice_1,
+    #   memory_choice_1],
+    #  ...,
+    # [
+    #  [num_inflight_requests, 
+    #   server_in_use_cpu, 
+    #   server_in_use_memory, 
+    #   server_available_cpu, 
+    #   server_available_memory,
+    #   function_avg_execution_time,
+    #   function_avg_waiting_time,
+    #   function_avg_interval,
+    #   function_avg_invoke_num,
+    #   function_avg_completion_time_slo,
+    #   function_avg_cpu_slo,
+    #   function_avg_memory_slo,
+    #   function_cpu_user_defined,
+    #   function_memory_user_defined,
+    #   function_baseline_duration,
+    #   cpu_choice_n,
+    #   memory_choice_m],
+    # ]
 
-        observation = np.zeros(self.observation_dim)
+    def get_observation(
+        self,
+        next_function_id
+    ):
+        function = self.profile.get_function_profile()[next_function_id]
+        
+        # Init observation
+        n_undone_request = self.request_record.get_undone_size()
+        server_in_use_cpu, server_in_use_memory = self.cluster.get_total_in_use_resources()
+        server_available_cpu, server_available_memory = self.cluster.get_total_available_resources()
+        function_avg_interval = self.request_record.get_avg_interval_per_function(next_function_id)
+        function_avg_execution_time = self.request_record.get_avg_execution_time_per_function(next_function_id)
+        function_avg_waiting_time = self.request_record.get_avg_waiting_time_per_function(next_function_id)
+        function_avg_invoke_num = self.request_record.get_avg_invoke_num_per_function(next_function_id, self.system_time.get_system_runtime())
+        function_avg_completion_time_slo = self.request_record.get_avg_completion_time_slo_per_function(next_function_id)
+        function_avg_cpu_slo = self.request_record.get_avg_cpu_slo_per_function(next_function_id)
+        function_avg_memory_slo = self.request_record.get_avg_memory_slo_per_function(next_function_id)
+        function_cpu_user_defined = function.get_cpu_user_defined()
+        function_memory_user_defined = function.get_memory_user_defined()
+        function_baseline_duration = function.get_baseline_duration()
 
-        # Init mask, always unmask action void
-        mask = np.ones(self.action_dim) * -10e8
-        mask[-1] = 0
+        state_batch = []
+        for cpu in range(1, self.env_params.cpu_cap_per_function + 1):
+            for memory in range(1, self.env_params.memory_cap_per_function + 1):
+                state = []
+                state.append(n_undone_request)
+                state.append(server_in_use_cpu)
+                state.append(server_in_use_memory)
+                state.append(server_available_cpu)
+                state.append(server_available_memory)
+                state.append(function_avg_execution_time)
+                state.append(function_avg_waiting_time)
+                state.append(function_avg_interval)
+                state.append(function_avg_invoke_num)
+                state.append(function_avg_completion_time_slo)
+                state.append(function_avg_cpu_slo)
+                state.append(function_avg_memory_slo)
+                state.append(function_cpu_user_defined)
+                state.append(function_memory_user_defined)
+                state.append(function_baseline_duration)
+                state.append(cpu)
+                state.append(memory)
 
-         # Number of undone requests
-        observation[0] = self.request_record.get_undone_size()
+                state_batch.append(state)
 
-        # Available cpu and memory per server
-        base_server = 0
-        for i, server in enumerate(self.cluster.get_server_pool()):
-            available_cpu, available_memory = server.resource_manager.get_resources_available()
-            observation[base_server + 2*i + 1] = available_cpu
-            observation[base_server + 2*i + 2] = available_memory
+        observation = torch.Tensor(state_batch)
 
-        # Information of functions
-        if next_timestep is not None:
-            base_function = 2*self.params.max_server
-            for i, function_id in enumerate(next_timestep.keys()):
-                if next_timestep[function_id] > 0:
-                    function = function_profile[function_id]
-                    cpu_cap_per_function = function.params.cpu_cap_per_function
-                    cpu_least_hint = function.params.cpu_least_hint
-                    memory_cap_per_function = function.params.memory_cap_per_function
-                    memory_least_hint = function.params.memory_least_hint
-                    
-                    avg_interval = self.request_record.get_avg_interval_per_function(function_id)
-                    avg_completion_time = self.request_record.get_avg_completion_time_per_function(function.function_id)
-                    is_cold_start = self.request_record.get_is_cold_start_per_function(function_id)
-                    cpu = function.get_cpu()
-                    memory = function.get_memory()
-                    cpu_adjust_direction = function.get_resource_adjust_direction("cpu")
-                    memory_adjust_direction = function.get_resource_adjust_direction("memory")
-                    invoke_num = next_timestep[function_id]
-                    
-                    observation[base_function + 8*i + 1] = avg_interval
-                    observation[base_function + 8*i + 2] = avg_completion_time
-                    observation[base_function + 8*i + 3] = is_cold_start
-                    observation[base_function + 8*i + 4] = cpu
-                    observation[base_function + 8*i + 5] = memory
-                    observation[base_function + 8*i + 6] = cpu_adjust_direction
-                    observation[base_function + 8*i + 7] = memory_adjust_direction
-                    observation[base_function + 8*i + 8] = invoke_num
+        # Init mask
+        if self.request_record.get_success_size_per_function(next_function_id) == 0 and \
+        self.request_record.get_timeout_size_per_function(next_function_id) == 0:
+            mask = torch.ones(observation.size(0)) * -10e8
+            index_user_defined = self.encode_action(
+                {"cpu": function_cpu_user_defined, "memory": function_memory_user_defined}
+            )
+            mask[index_user_defined] = 0
+        else:
+            mask = torch.zeros(observation.size(0))
 
-                    # Unmask action cpu access
-                    if cpu_adjust_direction == 0: 
-                        mask[4*i + 0] = 0 # Decrease one CPU slot
-                        mask[4*i + 1] = 0 # Increase one CPU slot
-                    elif cpu_adjust_direction == -1 and cpu > cpu_least_hint:
-                        mask[4*i + 0] = 0 # Decrease one CPU slot
-                    elif cpu_adjust_direction == 1 and cpu < cpu_cap_per_function:
-                        mask[4*i + 1] = 0 # Increase one CPU slot
-
-                    # Unmask action memory access
-                    if memory_adjust_direction == 0: 
-                        mask[4*i + 2] = 0 # Decrease one memory slot
-                        mask[4*i + 3] = 0 # Increase one memory slot
-                    if memory_adjust_direction == -1 and memory > memory_least_hint:
-                        mask[4*i + 2] = 0 # Decrease one memory slot
-                    elif memory_adjust_direction == 1 and memory < memory_cap_per_function:
-                        mask[4*i + 3] = 0 # Increase one memory slot
-
-        observation = torch.Tensor(observation).unsqueeze(0)
-        mask = torch.Tensor(mask).unsqueeze(0)
+        observation = observation.unsqueeze(0)
+        mask = mask.unsqueeze(0)
 
         return observation, mask
 
     #
     # Calculate reward for current timestep
     #
-    def get_reward(self, num_timeout):
+    def get_reward(
+        self, 
+        interval,
+        num_timeout=None
+    ):
         reward = 0
 
         # Timeout penalty
-        reward = reward + -(num_timeout * self.params.timeout_penalty)
+        if num_timeout is not None:
+            reward = reward - num_timeout * self.env_params.fail_penalty
 
-        # Reward of completion time
-        reward = reward + -self.request_record.get_current_completion_time(self.system_time)
+        # SLO penalty
+        for request in self.request_record.get_undone_request_record():
+            baseline_duration = request.profile.get_baseline_duration()
+            cpu_slo = request.get_cpu_slo()
+            memory_slo = request.get_memory_slo()
+            # reward = reward -  cpu_slo * memory_slo / baseline_duration
+            reward = reward -  1 / baseline_duration
 
-        # # Discounted by square root of throughput
-        throughput = np.max([np.sqrt(self.get_function_throughput()), 1])
-        reward = reward / throughput
-            
+        reward = interval * reward
+
         return reward
     
     #
     # Get done for current timestep
     #
     def get_done(self):
-        done = False
-        if self.system_time >= self.timetable.get_size() and self.request_record.get_undone_size() == 0:
-            done = True
-            
-        return done
+        if self.event_pq.is_empty() is True and \
+        self.system_time.get_system_runtime() > self.event_pq.get_max_timestep() - 1 and \
+        self.request_record.get_undone_size() == 0:
+            return True
+        else:
+            return False
     
     #
     # Get info for current timestep
@@ -374,11 +267,11 @@ class FaaSEnv(gym.Env):
         total_available_cpu, total_available_memory = self.cluster.get_total_available_resources()
 
         info = {
-            "system_time": self.system_time,
+            "system_time": self.system_time.get_system_runtime(),
+            "avg_completion_time_slo": self.request_record.get_avg_completion_time_slo(),
             "avg_completion_time": self.request_record.get_avg_completion_time(),
             "timeout_num": self.request_record.get_timeout_size(),
             "request_record": self.request_record,
-            "function_dict": self.get_function_dict(),
             "function_throughput": self.get_function_throughput(),
             "total_available_cpu": total_available_cpu,
             "total_available_memory": total_available_memory
@@ -401,52 +294,67 @@ class FaaSEnv(gym.Env):
         logger.warn("To do")
         pass
     
-    def step(self, action=None):
+    def step(
+        self, 
+        current_timestep,
+        current_function_id,
+        action
+    ):
         function_profile = self.profile.get_function_profile()
-        is_valid_action = self.update_function_profile(action)
         
-        if is_valid_action is True:
+        # Get next event
+        if self.event_pq.is_empty() is False:
+            # Get temporal rewards
             reward = 0
+            system_step = self.system_time.get_system_runtime()
+            while system_step < current_timestep:
+                self.system_time.step()
+                reward = reward + self.get_reward(interval=self.system_time.get_default_interval())
+
+                self.update_resource_utils()
+                num_timeout = self.update_cluster()
+                system_step = self.system_time.get_system_runtime()
+
+            # Go to next event
+            reward = reward + self.get_reward(interval=0)
+            self.update_function_profile(current_function_id, action)
+            num_timeout = self.update_cluster(current_function_id)
+
+            # Get next event
+            next_timestep, next_function_id = self.event_pq.get_event()
+
+            # Get observation for next state
+            observation, mask = self.get_observation(next_function_id=next_function_id)
         else:
-            # Time proceeds
-            self.system_time = self.system_time + self.params.interval
-
-            # Update the cluster
-            num_timeout = self.update_cluster()
-
-            # Update resource utilization record
-            self.update_resource_utils()
-
-            # Calculate reward
-            reward = self.get_reward(num_timeout)
+            # Retrieve tail rewards
+            reward = 0
+            while self.request_record.get_undone_size() > 0:
+                self.system_time.step()
+                reward = reward + self.get_reward(interval=self.system_time.get_default_interval())
+                self.update_resource_utils()
+                num_timeout = self.update_cluster()
             
-            # Reset resource adjust direction for each function 
-            for function_id in function_profile.keys():
-                function = function_profile[function_id]
-                function.reset_resource_adjust_direction()
-            
-        # Get observation for next state
-        observation, mask = self.get_observation()
-        
-        # Done?
+            observation = None
+            mask = None
+            next_timestep = None
+            next_function_id = None
+
+       # Done?
         done = self.get_done()
-        
+
         # Return info
         info = self.get_info()
         
-        return observation, mask, reward, done, info
+        return observation, mask, reward, done, info, next_timestep, next_function_id
     
     def reset(self):
-        self.system_time = 0
-        
+        self.system_time.reset()
         self.profile.reset()
-        self.cluster.reset()
+        self.event_pq.reset()
         self.request_record.reset()
         self.resource_utils_record.reset()
         
-        observation, mask = self.get_observation()
+        next_timestep, next_function_id = self.event_pq.get_event()
+        observation, mask = self.get_observation(next_function_id=next_function_id)
         
-        return observation, mask
-    
-    
-    
+        return observation, mask, next_timestep, next_function_id

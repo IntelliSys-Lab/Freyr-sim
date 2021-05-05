@@ -1,4 +1,5 @@
 import time
+import numpy as np
 
 
 #
@@ -6,97 +7,84 @@ import time
 #
 
 def log_trends(
-    logger_wrapper,
-    rm_name,
     overwrite,
-    reward_trend=None,
-    avg_completion_time_trend=None,
-    avg_completion_time_per_function_trend=None,
-    timeout_num_trend=None,
+    rm_name,
+    exp_id,
+    logger_wrapper,
+    reward_trend,
+    avg_completion_time_slo_trend,
+    avg_completion_time_trend,
+    timeout_num_trend,
+    avg_trends_per_function=None,
     loss_trend=None,
 ):
     # Log reward trend
-    if reward_trend is not None:
-        logger = logger_wrapper.get_logger("RewardTrends", overwrite)
-        logger.debug("")
-        logger.debug("**********")
-        logger.debug("**********")
-        logger.debug("**********")
-        logger.debug("")
-        logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-        logger.debug("{}:".format(rm_name))
-        logger.debug(','.join(str(reward) for reward in reward_trend))
+    logger = logger_wrapper.get_logger("RewardTrends", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
+    logger.debug(','.join(str(reward) for reward in reward_trend))
+
+    # Log avg completion time SLO trend
+    logger = logger_wrapper.get_logger("AvgCompletionTimeSLOTrends", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
+    logger.debug(','.join(str(avg_completion_time_slo) for avg_completion_time_slo in avg_completion_time_slo_trend))
 
     # Log avg completion time trend
-    if avg_completion_time_trend is not None:
-        logger = logger_wrapper.get_logger("AvgCompletionTimeTrends", overwrite)
-        logger.debug("")
-        logger.debug("**********")
-        logger.debug("**********")
-        logger.debug("**********")
-        logger.debug("")
-        logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-        logger.debug("{}:".format(rm_name))
-        logger.debug(','.join(str(avg_completion_time) for avg_completion_time in avg_completion_time_trend))
+    logger = logger_wrapper.get_logger("AvgCompletionTimeTrends", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
+    logger.debug(','.join(str(avg_completion_time) for avg_completion_time in avg_completion_time_trend))
 
     # Log avg completion time per function trend 
-    if avg_completion_time_per_function_trend is not None:
-        logger = logger_wrapper.get_logger("AvgCompletionTimePerFunctionTrends", overwrite)
-        logger.debug("")
-        logger.debug("**********")
-        logger.debug("**********")
-        logger.debug("**********")
+    if avg_trends_per_function is not None:
+        logger = logger_wrapper.get_logger("AvgPerFunctionTrends", overwrite)
         logger.debug("")
         logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-        logger.debug("{}:".format(rm_name))
+        logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
         logger.debug("")
-        for function_id in avg_completion_time_per_function_trend.keys():
-            logger.debug("{}:".format(function_id))
-            logger.debug(','.join(str(avg_completion_time) for avg_completion_time in avg_completion_time_per_function_trend[function_id]))
+        logger.debug("Function, Avg Completion Time, Avg Completion Time SLO, Avg CPU SLO, Avg Memory SLO")
+        for function_id in avg_trends_per_function.keys():
+            avg_completion_time = np.mean(avg_trends_per_function[function_id]["avg_completion_time"])
+            avg_completion_time_slo = np.mean(avg_trends_per_function[function_id]["avg_completion_time_slo"])
+            avg_cpu_slo = np.mean(avg_trends_per_function[function_id]["avg_cpu_slo"])
+            avg_memory_slo = np.mean(avg_trends_per_function[function_id]["avg_memory_slo"])
+            logger.debug("{},{},{},{},{}".format(function_id, avg_completion_time, avg_completion_time_slo, avg_cpu_slo, avg_memory_slo))
 
     # Log timeout number trend
-    if timeout_num_trend is not None:
-        logger = logger_wrapper.get_logger("TimeoutNumTrends", overwrite)
-        logger.debug("")
-        logger.debug("**********")
-        logger.debug("**********")
-        logger.debug("**********")
-        logger.debug("")
-        logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-        logger.debug("{}:".format(rm_name))
-        logger.debug(','.join(str(timeout_num) for timeout_num in timeout_num_trend))
+    logger = logger_wrapper.get_logger("TimeoutNumTrends", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
+    logger.debug(','.join(str(timeout_num) for timeout_num in timeout_num_trend))
 
     # Log loss trend
     if loss_trend is not None:
         logger = logger_wrapper.get_logger("LossTrends", overwrite)
         logger.debug("")
-        logger.debug("**********")
-        logger.debug("**********")
-        logger.debug("**********")
-        logger.debug("")
         logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-        logger.debug("{}:".format(rm_name))
+        logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
         logger.debug(','.join(str(loss) for loss in loss_trend))
 
     # Rollback handler 
     logger = logger_wrapper.get_logger(rm_name, False)
-    
+
 
 def log_resource_utils(
-    logger_wrapper,
     overwrite,
     rm_name,
+    exp_id,
+    logger_wrapper,
     episode,
     resource_utils_record
 ):
     logger = logger_wrapper.get_logger("ResourceUtils", overwrite)
     logger.debug("")
-    logger.debug("**********")
-    logger.debug("**********")
-    logger.debug("**********")
-    logger.debug("")
     logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    logger.debug("{} episode {}:".format(rm_name, episode))
+    logger.debug("RM {}, EXP {}, Episode {}:".format(rm_name, exp_id, episode))
 
     n_server = len(resource_utils_record) - 1
 
@@ -129,20 +117,17 @@ def log_resource_utils(
 
 
 def log_function_throughput(
-    logger_wrapper,
     overwrite,
     rm_name,
+    exp_id,
+    logger_wrapper,
     episode,
     function_throughput_list
 ):
     logger = logger_wrapper.get_logger("FunctionThroughput", overwrite)
     logger.debug("")
-    logger.debug("**********")
-    logger.debug("**********")
-    logger.debug("**********")
-    logger.debug("")
     logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    logger.debug("{} episode {}:".format(rm_name, episode))
+    logger.debug("RM {}, EXP {}, Episode {}:".format(rm_name, exp_id, episode))
     logger.debug("function_throughput")
     logger.debug(','.join(str(function_throughput) for function_throughput in function_throughput_list))
 
