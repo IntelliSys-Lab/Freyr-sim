@@ -122,7 +122,7 @@ class WorkloadGenerator():
                 cpu=param.cpu_user_defined, 
                 memory=param.memory_user_defined
             )
-            function.set_baseline_duration()
+            function.set_baseline()
             function_profile[function_id] = function
         
         profile = Profile(function_profile=function_profile)

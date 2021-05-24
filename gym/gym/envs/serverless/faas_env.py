@@ -67,7 +67,7 @@ class FaaSEnv(gym.Env):
     #
     
     def encode_action(self, action):
-        return (action["cpu"] - 1) * self.env_params.memory_cap_per_function + action["memory"] - 1
+        return (action["cpu"] - 1) * self.env_params.memory_cap_per_function + action["memory"]
 
     #
     # Update settings of function profile based on given action
@@ -97,9 +97,9 @@ class FaaSEnv(gym.Env):
             self.cluster.schedule(request)
             
         request_to_remove_list, num_timeout = self.cluster.step(self.system_time.get_system_runtime())
-        self.request_record.update_requests(request_to_remove_list)
+        good_slo, bad_slo, total_duration_slo = self.request_record.update_requests(request_to_remove_list)
 
-        return num_timeout
+        return good_slo, bad_slo, total_duration_slo
 
     #
     # Update resource utilization record
@@ -118,47 +118,38 @@ class FaaSEnv(gym.Env):
     def get_function_throughput(self):
         return self.request_record.get_success_size() + self.request_record.get_timeout_size()
 
-    #
-    # Observation space size: (15 + 2) for each, in total n * m
-    #
-    # [
-    #  [num_inflight_requests, 
-    #   server_in_use_cpu, 
-    #   server_in_use_memory, 
-    #   server_available_cpu, 
-    #   server_available_memory,
-    #   function_avg_execution_time,
-    #   function_avg_waiting_time,
-    #   function_avg_interval,
-    #   function_avg_invoke_num,
-    #   function_avg_completion_time_slo,
-    #   function_avg_cpu_slo,
-    #   function_avg_memory_slo,
-    #   function_cpu_user_defined,
-    #   function_memory_user_defined,
-    #   function_baseline_duration,
-    #   cpu_choice_1,
-    #   memory_choice_1],
-    #  ...,
-    # [
-    #  [num_inflight_requests, 
-    #   server_in_use_cpu, 
-    #   server_in_use_memory, 
-    #   server_available_cpu, 
-    #   server_available_memory,
-    #   function_avg_execution_time,
-    #   function_avg_waiting_time,
-    #   function_avg_interval,
-    #   function_avg_invoke_num,
-    #   function_avg_completion_time_slo,
-    #   function_avg_cpu_slo,
-    #   function_avg_memory_slo,
-    #   function_cpu_user_defined,
-    #   function_memory_user_defined,
-    #   function_baseline_duration,
-    #   cpu_choice_n,
-    #   memory_choice_m],
-    # ]
+    def get_mask(
+        self, 
+        next_function_id,
+        cpu_range,
+        memory_range
+    ):
+        batch_size = self.env_params.cpu_cap_per_function * self.env_params.memory_cap_per_function
+        mask = torch.zeros(batch_size)
+
+        if len(cpu_range) == 1:
+            for i in range(mask.size(0)):
+                cpu = self.decode_action(i)["cpu"]
+                if cpu != cpu_range[0]:
+                    mask[i] = -1e8
+        else:
+            for i in range(mask.size(0)):
+                cpu = self.decode_action(i)["cpu"]
+                if cpu < cpu_range[0] or cpu > cpu_range[1]:
+                    mask[i] = -1e8
+
+        if len(memory_range) == 1:
+            for i in range(mask.size(0)):
+                mem = self.decode_action(i)["memory"]
+                if mem != memory_range[0]:
+                    mask[i] = -1e8
+        else:
+            for i in range(mask.size(0)):
+                mem = self.decode_action(i)["memory"]
+                if mem < memory_range[0] or mem > memory_range[1]:
+                    mask[i] = -1e8
+
+        return mask
 
     def get_observation(
         self,
@@ -168,38 +159,27 @@ class FaaSEnv(gym.Env):
         
         # Init observation
         n_undone_request = self.request_record.get_undone_size()
-        server_in_use_cpu, server_in_use_memory = self.cluster.get_total_in_use_resources()
         server_available_cpu, server_available_memory = self.cluster.get_total_available_resources()
         function_avg_interval = self.request_record.get_avg_interval_per_function(next_function_id)
-        function_avg_execution_time = self.request_record.get_avg_execution_time_per_function(next_function_id)
-        function_avg_waiting_time = self.request_record.get_avg_waiting_time_per_function(next_function_id)
         function_avg_invoke_num = self.request_record.get_avg_invoke_num_per_function(next_function_id, self.system_time.get_system_runtime())
-        function_avg_completion_time_slo = self.request_record.get_avg_completion_time_slo_per_function(next_function_id)
-        function_avg_cpu_slo = self.request_record.get_avg_cpu_slo_per_function(next_function_id)
-        function_avg_memory_slo = self.request_record.get_avg_memory_slo_per_function(next_function_id)
-        function_cpu_user_defined = function.get_cpu_user_defined()
-        function_memory_user_defined = function.get_memory_user_defined()
-        function_baseline_duration = function.get_baseline_duration()
+        function_avg_cpu_peak = self.request_record.get_avg_cpu_peak_per_function(next_function_id)
+        function_avg_memory_peak = self.request_record.get_avg_memory_peak_per_function(next_function_id)
+        function_avg_duration = self.request_record.get_avg_duration_per_function(next_function_id)
+        function_baseline = function.get_baseline()
 
         state_batch = []
         for cpu in range(1, self.env_params.cpu_cap_per_function + 1):
             for memory in range(1, self.env_params.memory_cap_per_function + 1):
                 state = []
                 state.append(n_undone_request)
-                state.append(server_in_use_cpu)
-                state.append(server_in_use_memory)
                 state.append(server_available_cpu)
                 state.append(server_available_memory)
-                state.append(function_avg_execution_time)
-                state.append(function_avg_waiting_time)
                 state.append(function_avg_interval)
                 state.append(function_avg_invoke_num)
-                state.append(function_avg_completion_time_slo)
-                state.append(function_avg_cpu_slo)
-                state.append(function_avg_memory_slo)
-                state.append(function_cpu_user_defined)
-                state.append(function_memory_user_defined)
-                state.append(function_baseline_duration)
+                state.append(function_avg_cpu_peak)
+                state.append(function_avg_memory_peak)
+                state.append(function_avg_duration)
+                state.append(function_baseline)
                 state.append(cpu)
                 state.append(memory)
 
@@ -208,15 +188,62 @@ class FaaSEnv(gym.Env):
         observation = torch.Tensor(state_batch)
 
         # Init mask
-        if self.request_record.get_success_size_per_function(next_function_id) == 0 and \
-        self.request_record.get_timeout_size_per_function(next_function_id) == 0:
-            mask = torch.ones(observation.size(0)) * -10e8
-            index_user_defined = self.encode_action(
-                {"cpu": function_cpu_user_defined, "memory": function_memory_user_defined}
-            )
-            mask[index_user_defined] = 0
+        cpu_cap_per_function = self.env_params.cpu_cap_per_function
+        memory_cap_per_function = self.env_params.memory_cap_per_function
+        cpu_user_defined = function.get_cpu_user_defined()
+        memory_user_defined = function.get_memory_user_defined()
+        
+        last_request = self.request_record.get_last_done_request_per_function(next_function_id)
+        is_safeguard = False
+
+        if last_request is None or last_request.get_status() == "timeout":
+            cpu_range = [cpu_user_defined]
+            memory_range = [memory_user_defined]
+            is_safeguard = True
+            # if last_request is None:
+                # print("{} first request, safeguard activate".format(next_function_id))
+            # elif last_request.get_is_success() is False:
+                # print("{} last request failed, safeguard activate".format(next_function_id))
         else:
-            mask = torch.zeros(observation.size(0))
+            last_cpu_alloc = last_request.get_cpu()
+            last_mem_alloc = last_request.get_memory()
+            last_cpu_peak = last_request.get_cpu_peak()
+            last_mem_peak = last_request.get_memory_peak()
+            recent_cpu_peak = self.request_record.get_recent_cpu_peak_per_function(next_function_id)
+            recent_memory_peak = self.request_record.get_recent_memory_peak_per_function(next_function_id)
+
+            if last_cpu_peak / cpu_user_defined <= 0.9: # Over-provisioned
+                if last_cpu_peak / last_cpu_alloc >= 0.9: # Usage spike
+                    cpu_range = [cpu_user_defined]
+                    is_safeguard = True
+                    # print("{}, last_cpu_peak {}, last_cpu_alloc {}, cpu safeguard activate".format(next_function_id, last_cpu_peak, last_cpu_alloc))
+                else:
+                    cpu_range = [min(int(recent_cpu_peak) + 1, cpu_user_defined), cpu_user_defined]
+            else: # Under-provisioned
+                cpu_range = [min(int(recent_cpu_peak) + 1, cpu_cap_per_function), cpu_cap_per_function]
+                    
+            if last_mem_peak / memory_user_defined <= 0.9: # Over-provisioned
+                if last_mem_peak / last_mem_alloc >= 0.9: # Usage spike
+                    memory_range = [memory_user_defined]
+                    is_safeguard = True
+                    # print("{}, last_mem_peak {}, last_mem_alloc {}, memory safeguard activate".format(next_function_id, last_mem_peak, last_mem_alloc))
+                else:
+                    memory_range = [min(int(recent_memory_peak) + 1, memory_user_defined), memory_user_defined]
+            else: # Under-provisioned
+                memory_range = [min(int(recent_memory_peak) + 1, memory_cap_per_function), memory_cap_per_function]
+
+            # if len(cpu_range) > 1 and cpu_range[0] >= cpu_range[1]:
+            #     print("last_cpu_peak: {}, last_cpu_alloc: {}, cpu_user_defined: {}".format(last_cpu_peak, last_cpu_alloc, cpu_user_defined))
+            #     print("cpu_range: {} - {}".format(cpu_range[0], cpu_range[1]))
+            # if len(memory_range) > 1 and memory_range[0] >= memory_range[1]:
+            #     print("last_mem_peak: {}, last_mem_alloc: {}, memory_user_defined: {}".format(last_mem_peak, last_mem_alloc, memory_user_defined))
+            #     print("memory_range: {} - {}".format(memory_range[0], memory_range[1]))
+
+        mask = self.get_mask(
+            next_function_id=next_function_id,
+            cpu_range=cpu_range,
+            memory_range=memory_range
+        )
 
         observation = observation.unsqueeze(0)
         mask = mask.unsqueeze(0)
@@ -228,24 +255,17 @@ class FaaSEnv(gym.Env):
     #
     def get_reward(
         self, 
-        interval,
-        num_timeout=None
+        good_slo,
+        bad_slo,
+        total_duration_slo
     ):
-        reward = 0
+        if self.get_function_throughput() == 0:
+            reward = - total_duration_slo
+        else:
+            reward = - total_duration_slo / self.get_function_throughput() ** (1/3)
 
-        # Timeout penalty
-        if num_timeout is not None:
-            reward = reward - num_timeout * self.env_params.fail_penalty
-
-        # SLO penalty
-        for request in self.request_record.get_undone_request_record():
-            baseline_duration = request.profile.get_baseline_duration()
-            cpu_slo = request.get_cpu_slo()
-            memory_slo = request.get_memory_slo()
-            # reward = reward -  cpu_slo * memory_slo / baseline_duration
-            reward = reward -  1 / baseline_duration
-
-        reward = interval * reward
+        # Constant summary on good and bad decisions
+        reward = reward + good_slo - bad_slo
 
         return reward
     
@@ -268,9 +288,6 @@ class FaaSEnv(gym.Env):
 
         info = {
             "system_time": self.system_time.get_system_runtime(),
-            "avg_completion_time_slo": self.request_record.get_avg_completion_time_slo(),
-            "avg_completion_time": self.request_record.get_avg_completion_time(),
-            "timeout_num": self.request_record.get_timeout_size(),
             "request_record": self.request_record,
             "function_throughput": self.get_function_throughput(),
             "total_available_cpu": total_available_cpu,
@@ -278,7 +295,14 @@ class FaaSEnv(gym.Env):
         }
 
         if self.get_done() is True:
-            info["resource_utils_record"] = self.get_resource_utils_record()
+            info["avg_duration_slo"] = self.request_record.get_avg_duration_slo()
+            info["avg_harvest_cpu_percent"] = self.request_record.get_avg_harvest_cpu_percent()
+            info["avg_harvest_memory_percent"] = self.request_record.get_avg_harvest_memory_percent()
+            info["slo_violation_percent"] = self.request_record.get_slo_violation_percent()
+            info["acceleration_pecent"] = self.request_record.get_acceleration_pecent()
+            info["timeout_num"] = self.request_record.get_timeout_size()
+            info["request_record"] = self.request_record
+            # info["avg_interval"] = self.request_record.get_avg_interval()
         
         return info
         
@@ -309,30 +333,42 @@ class FaaSEnv(gym.Env):
             system_step = self.system_time.get_system_runtime()
             while system_step < current_timestep:
                 self.system_time.step()
-                reward = reward + self.get_reward(interval=self.system_time.get_default_interval())
-
-                self.update_resource_utils()
-                num_timeout = self.update_cluster()
+                good_slo, bad_slo, total_duration_slo = self.update_cluster()
+                reward = reward + self.get_reward(
+                    good_slo=good_slo,
+                    bad_slo=bad_slo,
+                    total_duration_slo=total_duration_slo
+                )
+                
                 system_step = self.system_time.get_system_runtime()
 
             # Go to next event
-            reward = reward + self.get_reward(interval=0)
+            good_slo, bad_slo, total_duration_slo = self.update_cluster(current_function_id)
             self.update_function_profile(current_function_id, action)
-            num_timeout = self.update_cluster(current_function_id)
 
             # Get next event
             next_timestep, next_function_id = self.event_pq.get_event()
 
             # Get observation for next state
             observation, mask = self.get_observation(next_function_id=next_function_id)
+
+            # Get rewards
+            reward = reward + self.get_reward(
+                good_slo=good_slo,
+                bad_slo=bad_slo,
+                total_duration_slo=total_duration_slo
+            )
         else:
             # Retrieve tail rewards
             reward = 0
-            while self.request_record.get_undone_size() > 0:
+            while self.get_done() is False:
                 self.system_time.step()
-                reward = reward + self.get_reward(interval=self.system_time.get_default_interval())
-                self.update_resource_utils()
-                num_timeout = self.update_cluster()
+                good_slo, bad_slo, total_duration_slo = self.update_cluster()
+                reward = reward + self.get_reward(
+                    good_slo=good_slo,
+                    bad_slo=bad_slo,
+                    total_duration_slo=total_duration_slo
+                )
             
             observation = None
             mask = None

@@ -68,8 +68,8 @@ class Function():
         # print("memory_delay_factor: {}".format(memory_delay_factor))
         # print("memory_duration_increment: {}".format(memory_duration_increment))
 
-    def set_baseline_duration(self):
-        self.baseline_duration = cp.deepcopy(self.duration)
+    def set_baseline(self):
+        self.baseline = cp.deepcopy(self.duration)
 
     def get_function_id(self):
         return self.function_id
@@ -83,6 +83,12 @@ class Function():
     def get_memory(self):
         return self.memory
 
+    def get_ideal_cpu(self):
+        return self.params.ideal_cpu
+
+    def get_ideal_memory(self):
+        return self.params.ideal_memory
+
     def get_cpu_user_defined(self):
         return self.params.cpu_user_defined
 
@@ -92,8 +98,8 @@ class Function():
     def get_min_duration(self):
         return self.params.min_duration
     
-    def get_baseline_duration(self):
-        return self.baseline_duration
+    def get_baseline(self):
+        return self.baseline
 
 
 class Request():
@@ -130,6 +136,12 @@ class Request():
     def get_memory(self):
         return self.profile.get_memory()
 
+    def get_cpu_user_defined(self):
+        return self.profile.get_cpu_user_defined()
+
+    def get_memory_user_defined(self):
+        return self.profile.get_memory_user_defined()
+
     def get_function_id(self):
         return self.profile.get_function_id()
 
@@ -148,17 +160,20 @@ class Request():
     def get_progress_time(self):
         return self.progress
 
+    def get_duration_slo(self):
+        return self.progress / self.profile.get_baseline()
+
     def get_completion_time(self):
         return self.progress + self.waiting
 
     def get_completion_time_slo(self):
-        return self.get_completion_time() / self.profile.get_baseline_duration()
+        return self.get_completion_time() / self.profile.get_baseline()
 
-    def get_cpu_slo(self):
-        return self.get_cpu() / self.profile.get_cpu_user_defined()
+    def get_cpu_peak(self):
+        return min(self.get_cpu(), self.profile.get_ideal_cpu())
 
-    def get_memory_slo(self):
-        return self.get_memory() / self.profile.get_memory_user_defined()
+    def get_memory_peak(self):
+        return min(self.get_memory(), self.profile.get_ideal_memory())
     
     def get_status(self):
         return self.status
@@ -247,9 +262,19 @@ class RequestRecord():
                     self.timeout_request_record_per_function[function_id].append(request)
 
     def update_requests(self, done_request_list):
+        good_slo = 0
+        bad_slo = 0
+        total_duration_slo = 0
+
         for request in done_request_list:
             function_id = request.get_function_id()
             status = request.get_status()
+
+            duration_slo = request.get_duration_slo()
+            if duration_slo < 1:
+                good_slo = good_slo + (1 - duration_slo)
+            elif duration_slo > 1:
+                bad_slo = bad_slo + (duration_slo - 1) * (request.get_cpu_user_defined() + request.get_memory_user_defined())
 
             if status == "success":
                 self.success_request_record.append(request)
@@ -260,6 +285,8 @@ class RequestRecord():
             
             self.undone_request_record.remove(request)
             self.undone_request_record_per_function[function_id].remove(request)
+
+        return good_slo, bad_slo, total_duration_slo
 
     def get_total_size(self):
         return len(self.total_request_record)
@@ -272,6 +299,34 @@ class RequestRecord():
 
     def get_timeout_size(self):
         return len(self.timeout_request_record)
+
+    def get_last_done_request_per_function(self, function_id):
+        last_request = None
+        for request in reversed(self.total_request_record_per_function[function_id]):
+            if request.get_status() != "undone":
+                last_request = request
+                break
+
+        return last_request
+
+    def get_avg_duration_slo(self):
+        request_num = 0
+        total_duration_slo = 0
+
+        for request in self.success_request_record:
+            request_num = request_num + 1
+            total_duration_slo = total_duration_slo + request.get_duration_slo()
+
+        for request in self.timeout_request_record:
+            request_num = request_num + 1
+            total_duration_slo = total_duration_slo + request.get_duration_slo()
+
+        if request_num == 0:
+            avg_duration_slo = 0
+        else:
+            avg_duration_slo = total_duration_slo / request_num
+
+        return avg_duration_slo
 
     def get_avg_completion_time_slo(self):
         request_num = 0
@@ -327,24 +382,59 @@ class RequestRecord():
         timeout_size_per_function = len(self.timeout_request_record_per_function[function_id])
         return timeout_size_per_function
 
-    def get_avg_cpu_per_function(self, function_id):
+    def get_avg_cpu_peak_per_function(self, function_id):
         request_num = 0
-        total_cpu = 0
+        total_cpu_peak = 0
 
         for request in self.success_request_record_per_function[function_id]:
             request_num = request_num + 1
-            total_cpu = total_cpu + request.get_cpu()
+            total_cpu_peak = total_cpu_peak + request.get_cpu_peak()
 
         for request in self.timeout_request_record_per_function[function_id]:
             request_num = request_num + 1
-            total_cpu = total_cpu + request.get_cpu()
+            total_cpu_peak = total_cpu_peak + request.get_cpu_peak()
         
         if request_num == 0:
-            avg_cpu_per_function = 0
+            avg_cpu_peak_per_function = 0
         else:
-            avg_cpu_per_function = total_cpu / request_num
+            avg_cpu_peak_per_function = total_cpu_peak / request_num
 
-        return avg_cpu_per_function
+        return avg_cpu_peak_per_function
+
+    def get_avg_memory_peak_per_function(self, function_id):
+        request_num = 0
+        total_memory_peak = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_memory_peak = total_memory_peak + request.get_memory_peak()
+
+        for request in self.timeout_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_memory_peak = total_memory_peak + request.get_memory_peak()
+        
+        if request_num == 0:
+            avg_memory_peak_per_function = 0
+        else:
+            avg_memory_peak_per_function = total_memory_peak / request_num
+
+        return avg_memory_peak_per_function
+
+    def get_recent_cpu_peak_per_function(self, function_id):
+        recent_cpu_peak = 0
+        for request in reversed(self.success_request_record_per_function[function_id]):
+            if request.get_cpu_peak() > recent_cpu_peak:
+                recent_cpu_peak = request.get_cpu_peak()
+
+        return recent_cpu_peak
+
+    def get_recent_memory_peak_per_function(self, function_id):
+        recent_memory_peak = 0
+        for request in reversed(self.success_request_record_per_function[function_id]):
+            if request.get_memory_peak() > recent_memory_peak:
+                recent_memory_peak = request.get_memory_peak()
+
+        return recent_memory_peak
 
     def get_avg_cpu_slo_per_function(self, function_id):
         request_num = 0
@@ -403,24 +493,43 @@ class RequestRecord():
 
         return avg_memory_slo_per_function
 
-    def get_avg_execution_time_per_function(self, function_id):
+    def get_avg_duration_per_function(self, function_id):
         request_num = 0
-        total_execution_time = 0
+        total_duration = 0
 
         for request in self.success_request_record_per_function[function_id]:
             request_num = request_num + 1
-            total_execution_time = total_execution_time + request.get_progress_time()
+            total_duration = total_duration + request.get_progress_time()
 
         for request in self.timeout_request_record_per_function[function_id]:
             request_num = request_num + 1
-            total_execution_time = total_execution_time + request.get_progress_time()
+            total_duration = total_duration + request.get_progress_time()
         
         if request_num == 0:
-            avg_execution_time_per_function = 0
+            avg_duration_per_function = 0
         else:
-            avg_execution_time_per_function = total_execution_time / request_num
+            avg_duration_per_function = total_duration / request_num
 
-        return avg_execution_time_per_function
+        return avg_duration_per_function
+
+    def get_avg_duration_slo_per_function(self, function_id):
+        request_num = 0
+        total_duration_slo = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_duration_slo = total_duration_slo + request.get_duration_slo()
+
+        for request in self.timeout_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_duration_slo = total_duration_slo + request.get_duration_slo()
+        
+        if request_num == 0:
+            avg_duration_slo_per_function = 0
+        else:
+            avg_duration_slo_per_function = total_duration_slo / request_num
+
+        return avg_duration_slo_per_function
 
     def get_avg_waiting_time_per_function(self, function_id):
         request_num = 0
@@ -505,6 +614,62 @@ class RequestRecord():
             avg_invoke_num_per_function = self.get_total_size_per_function(function_id) / system_time
 
         return avg_invoke_num_per_function
+
+    def get_avg_harvest_cpu_percent(self):
+        request_num = 0
+        total_harvest_cpu_percent = 0
+
+        for request in self.success_request_record:
+            cpu = request.get_cpu()
+            cpu_user_defined = request.get_cpu_user_defined()
+
+            if cpu < cpu_user_defined:
+                request_num = request_num + 1
+                total_harvest_cpu_percent = total_harvest_cpu_percent + (cpu_user_defined - cpu) / cpu_user_defined
+
+        if request_num == 0:
+            avg_harvest_cpu_percent = 0
+        else:
+            avg_harvest_cpu_percent = total_harvest_cpu_percent / request_num
+        
+        return avg_harvest_cpu_percent
+
+    def get_avg_harvest_memory_percent(self):
+        request_num = 0
+        total_harvest_memory_percent = 0
+
+        for request in self.success_request_record:
+            memory = request.get_memory()
+            memory_user_defined = request.get_memory_user_defined()
+
+            if memory < memory_user_defined:
+                request_num = request_num + 1
+                total_harvest_memory_percent = total_harvest_memory_percent + (memory_user_defined - memory) / memory_user_defined
+
+        if request_num == 0:
+            avg_harvest_memory_percent = 0
+        else:
+            avg_harvest_memory_percent = total_harvest_memory_percent / request_num
+        
+        return avg_harvest_memory_percent
+
+    def get_slo_violation_percent(self):
+        request_num = 0
+
+        for request in self.success_request_record:
+            if request.get_duration_slo() > 1.15:
+                request_num = request_num + 1
+
+        return request_num / len(self.success_request_record)
+
+    def get_acceleration_pecent(self):
+        request_num = 0
+
+        for request in self.success_request_record:
+            if request.get_duration_slo() < 1:
+                request_num = request_num + 1
+
+        return request_num / len(self.success_request_record)
 
     def get_total_request_record(self):
         return self.total_request_record

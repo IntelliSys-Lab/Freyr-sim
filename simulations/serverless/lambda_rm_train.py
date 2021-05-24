@@ -37,8 +37,8 @@ def lambda_rm_train(
     )
 
     # Record max sum rewards
-    max_reward_sum = -10e8
-    max_reward_sum_episode = 0
+    min_avg_duration_slo = 1e8
+    min_avg_duration_slo_episode = 0
 
     # Start training
     episode = 0
@@ -72,8 +72,11 @@ def lambda_rm_train(
 
         # Trends recording
         reward_trend = []
-        avg_completion_time_slo_trend = []
-        avg_completion_time_trend = []
+        avg_duration_slo_trend = []
+        avg_harvest_cpu_percent_trend = []
+        avg_harvest_memory_percent_trend = []
+        slo_violation_percent_trend = []
+        acceleration_pecent_trend = []
         timeout_num_trend = []
         loss_trend = []
 
@@ -138,8 +141,11 @@ def lambda_rm_train(
                     if system_time < info["system_time"]:
                         system_time = info["system_time"]
 
-                    avg_completion_time_slo = info["avg_completion_time_slo"]
-                    avg_completion_time = info["avg_completion_time"]
+                    avg_duration_slo = info["avg_duration_slo"]
+                    avg_harvest_cpu_percent = info["avg_harvest_cpu_percent"]
+                    avg_harvest_memory_percent = info["avg_harvest_memory_percent"]
+                    slo_violation_percent = info["slo_violation_percent"]
+                    acceleration_pecent = info["acceleration_pecent"]
                     timeout_num = info["timeout_num"]
 
                     # Concatenate trajectories
@@ -158,11 +164,12 @@ def lambda_rm_train(
                         log_prob_history=log_prob_history
                     )
 
-                    # Save the max sum reward model
-                    if max_reward_sum < reward_sum:
-                        max_reward_sum = reward_sum
-                        max_reward_sum_episode = episode
-                        agent.save(params.MODEL_SAVE_PATH + "max_reward_sum.ckpt")
+                    # Save the min duration slo model
+                    if min_avg_duration_slo > avg_duration_slo:
+                        min_avg_duration_slo = avg_duration_slo
+                        min_avg_duration_slo_episode = episode
+                        agent.save(params.MODEL_SAVE_PATH + "min_avg_duration_slo.ckpt")
+
 
                     logger.info("")
                     logger.info("**********")
@@ -172,19 +179,25 @@ def lambda_rm_train(
                     logger.info("Running {}".format(rm))
                     logger.info("Exp {}, Episode {} finished".format(exp_id, episode))
                     logger.info("{} actual timesteps".format(actual_time))
-                    logger.info("{} system timesteps".format(system_time))
+                    logger.info("{} system timesteps".format(system_runtime))
                     logger.info("Total events: {}".format(total_events))
                     logger.info("Total reward: {}".format(reward_sum))
-                    logger.info("Avg completion time SLO: {}".format(avg_completion_time_slo))
-                    logger.info("Avg completion time: {}".format(avg_completion_time))
+                    logger.info("Avg relative duration: {}".format(avg_duration_slo))
+                    logger.info("Avg harvest CPU percent: {}".format(avg_harvest_cpu_percent))
+                    logger.info("Avg harvest memory percent: {}".format(avg_harvest_memory_percent))
+                    logger.info("SLO violation percent: {}".format(slo_violation_percent))
+                    logger.info("Acceleration pecent: {}".format(acceleration_pecent))
                     logger.info("Timeout num: {}".format(timeout_num))
                     logger.info("Loss: {}".format(loss))
                     logger.info("")
-                    logger.info("Current Max Reward: {}, observed at episode {}".format(max_reward_sum, max_reward_sum_episode))
+                    logger.info("Current Min Avg Duration SLO: {}, observed at episode {}".format(min_avg_duration_slo, min_avg_duration_slo_episode))
                     
                     reward_trend.append(reward_sum)
-                    avg_completion_time_slo_trend.append(avg_completion_time_slo)
-                    avg_completion_time_trend.append(avg_completion_time)
+                    avg_duration_slo_trend.append(avg_duration_slo)
+                    avg_harvest_cpu_percent_trend.append(avg_harvest_cpu_percent)
+                    avg_harvest_memory_percent_trend.append(avg_harvest_memory_percent)
+                    slo_violation_percent_trend.append(slo_violation_percent)
+                    acceleration_pecent_trend.append(acceleration_pecent)
                     timeout_num_trend.append(timeout_num)
                     loss_trend.append(loss)
                     
@@ -204,8 +217,11 @@ def lambda_rm_train(
             exp_id=exp_id,
             logger_wrapper=logger_wrapper,
             reward_trend=reward_trend,
-            avg_completion_time_slo_trend=avg_completion_time_slo_trend,
-            avg_completion_time_trend=avg_completion_time_trend,
+            avg_duration_slo_trend=avg_duration_slo_trend,
+            avg_harvest_cpu_percent_trend=avg_harvest_cpu_percent_trend,
+            avg_harvest_memory_percent_trend=avg_harvest_memory_percent_trend,
+            slo_violation_percent_trend=slo_violation_percent_trend,
+            acceleration_pecent_trend=acceleration_pecent_trend,
             timeout_num_trend=timeout_num_trend,
             loss_trend=loss_trend
         )

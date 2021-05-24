@@ -12,10 +12,14 @@ def log_trends(
     exp_id,
     logger_wrapper,
     reward_trend,
-    avg_completion_time_slo_trend,
-    avg_completion_time_trend,
+    avg_duration_slo_trend,
+    avg_harvest_cpu_percent_trend,
+    avg_harvest_memory_percent_trend,
+    slo_violation_percent_trend,
+    acceleration_pecent_trend,
     timeout_num_trend,
-    avg_trends_per_function=None,
+    avg_interval_trend=None,
+    avg_duration_slo_per_function_trend=None,
     loss_trend=None,
 ):
     # Log reward trend
@@ -25,34 +29,23 @@ def log_trends(
     logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
     logger.debug(','.join(str(reward) for reward in reward_trend))
 
-    # Log avg completion time SLO trend
-    logger = logger_wrapper.get_logger("AvgCompletionTimeSLOTrends", overwrite)
+    # Log avg duration slo trend
+    logger = logger_wrapper.get_logger("AvgDurationSLOTrends", overwrite)
     logger.debug("")
     logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
-    logger.debug(','.join(str(avg_completion_time_slo) for avg_completion_time_slo in avg_completion_time_slo_trend))
+    logger.debug(','.join(str(avg_duration_slo) for avg_duration_slo in avg_duration_slo_trend))
 
-    # Log avg completion time trend
-    logger = logger_wrapper.get_logger("AvgCompletionTimeTrends", overwrite)
-    logger.debug("")
-    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
-    logger.debug(','.join(str(avg_completion_time) for avg_completion_time in avg_completion_time_trend))
-
-    # Log avg completion time per function trend 
-    if avg_trends_per_function is not None:
-        logger = logger_wrapper.get_logger("AvgPerFunctionTrends", overwrite)
+    # Log avg duration slo per function trend 
+    if avg_duration_slo_per_function_trend is not None:
+        logger = logger_wrapper.get_logger("AvgDurationSLOPerFunctionTrends", overwrite)
         logger.debug("")
         logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
         logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
         logger.debug("")
-        logger.debug("Function, Avg Completion Time, Avg Completion Time SLO, Avg CPU SLO, Avg Memory SLO")
-        for function_id in avg_trends_per_function.keys():
-            avg_completion_time = np.mean(avg_trends_per_function[function_id]["avg_completion_time"])
-            avg_completion_time_slo = np.mean(avg_trends_per_function[function_id]["avg_completion_time_slo"])
-            avg_cpu_slo = np.mean(avg_trends_per_function[function_id]["avg_cpu_slo"])
-            avg_memory_slo = np.mean(avg_trends_per_function[function_id]["avg_memory_slo"])
-            logger.debug("{},{},{},{},{}".format(function_id, avg_completion_time, avg_completion_time_slo, avg_cpu_slo, avg_memory_slo))
+        for function_id in avg_duration_slo_per_function_trend.keys():
+            logger.debug("{}:".format(function_id))
+            logger.debug(','.join(str(avg_duration_slo) for avg_duration_slo in avg_duration_slo_per_function_trend[function_id]))
 
     # Log timeout number trend
     logger = logger_wrapper.get_logger("TimeoutNumTrends", overwrite)
@@ -60,6 +53,42 @@ def log_trends(
     logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
     logger.debug(','.join(str(timeout_num) for timeout_num in timeout_num_trend))
+
+    # Log avg harvest cpu percent trend
+    logger = logger_wrapper.get_logger("AvgHarvestCPUPercentTrends", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
+    logger.debug(','.join(str(avg_harvest_cpu_percent) for avg_harvest_cpu_percent in avg_harvest_cpu_percent_trend))
+
+    # Log avg harvest memory percent trend
+    logger = logger_wrapper.get_logger("AvgHarvestMemoryPercentTrends", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
+    logger.debug(','.join(str(avg_harvest_memory_percent) for avg_harvest_memory_percent in avg_harvest_memory_percent_trend))
+
+    # Log slo violation percent trend
+    logger = logger_wrapper.get_logger("SLOViolationPercentTrends", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
+    logger.debug(','.join(str(slo_violation_percent) for slo_violation_percent in slo_violation_percent_trend))
+
+    # Log acceleration percent trend
+    logger = logger_wrapper.get_logger("AccelerationPercentTrends", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
+    logger.debug(','.join(str(acceleration_pecent) for acceleration_pecent in acceleration_pecent_trend))
+
+    # Log avg interval trend
+    if avg_interval_trend is not None:
+        logger = logger_wrapper.get_logger("AvgIntervalTrends", overwrite)
+        logger.debug("")
+        logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+        logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
+        logger.debug(','.join(str(avg_interval) for avg_interval in avg_interval_trend))
 
     # Log loss trend
     if loss_trend is not None:
