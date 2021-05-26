@@ -5,7 +5,7 @@
 #
 
 sudo apt install -y python3-pip
-pip3 install pandas torch matplotlib scipy
+pip3 install numpy pandas torch matplotlib scipy
 
 #
 # Create ckpt, figures, logs and azure trace folders if not exist

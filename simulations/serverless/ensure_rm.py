@@ -1,247 +1,265 @@
 import sys
 sys.path.append("../../gym")
-import numpy as np
-import queue
-import matplotlib.pyplot as plt
 import gym
 
-from gym.envs.serverless.faas_utils import Prioritize
+from gym.envs.serverless.faas_params import WorkloadParameters, EnvParameters
 from logger import Logger
-from plotter import Plotter
-from utils import log_trends, log_resource_utils, log_function_throughput
+from utils import log_trends, log_function_throughput, log_per_function, log_per_invocation
+import params
 
 
 #
-# ENSURE provision
-#                 
+# ENSURE RM
+#
 def ensure_rm(
-    profile,
-    timetable,
-    env_params,
-    logger_wrapper,
-    max_episode=10,
-    save_plot=False,
-    show_plot=True
+    logger_wrapper
 ):
-    rm = "EnsureRM"
-    function_profile = profile.get_function_profile()
+    rm = "ENSURE_RM"
 
     # Set up logger
     logger = logger_wrapper.get_logger(rm, True)
     
-    # Make environment
-    env = gym.make("FaaS-v0", params=env_params, profile=profile, timetable=timetable)
-    env.seed(114514) # Reproducible, policy gradient has high variance
-    
-    reward_trend = []
-    avg_completion_time_trend = []
-    timeout_num_trend = []
-    avg_completion_time_per_function_trend = {}
-    for function_id in function_profile.keys():
-        avg_completion_time_per_function_trend[function_id] = []
-    
-    # Start random provision
-    for episode in range(max_episode):
-        observation, mask = env.reset()
-        reward_sum = 0
-        actual_time = 0
-        system_time = 0
+    # Start
+    episode = 0
+    for exp_id in params.EXP_EVAL:
+        # Set paramters for workloads
+        workload_params = WorkloadParameters(
+            azure_file_path=params.AZURE_FILE_PATH,
+            exp_id=exp_id
+        )
 
-        function_throughput_list = []
-        
-        action = {}
+        # Set paramters for Environment
+        env_params = EnvParameters(
+            cluster_size=params.CLUSTER_SIZE,
+            user_cpu_per_server=params.USER_CPU_PER_SERVER,
+            user_memory_per_server=params.USER_MEMORY_PER_SERVER,
+            keep_alive_window=params.KEEP_ALIVE_WINDOW,
+            cpu_cap_per_function=params.CPU_CAP_PER_FUNCTION,
+            memory_cap_per_function=params.MEMORY_CAP_PER_FUNCTION,
+            memory_mb_limit=params.MEMORY_MB_LIMIT,
+            interval=params.ENV_INTERVAL_LIMIT,
+            fail_penalty=params.FAIL_PENALTY
+        )
 
-        # ENSURE parameter
-        num_update_threshold_dict = {}
-        for function_id in function_profile.keys():
-            num_update_threshold_dict[function_id] = 0
-        
-        episode_done = False
-        while episode_done is False:
-            actual_time = actual_time + 1
-            next_observation, next_mask, reward, done, info = env.step(action)
-            
-            if system_time < info["system_time"]:
-                system_time = info["system_time"]
+        # Set up environment
+        env = gym.make(
+            "FaaS-v0", 
+            workload_params=workload_params,
+            env_params=env_params
+        )
+        env.seed(114514)
+
+        # Trends recording
+        reward_trend = []
+        avg_duration_slo_trend = []
+        avg_harvest_cpu_percent_trend = []
+        avg_harvest_memory_percent_trend = []
+        slo_violation_percent_trend = []
+        acceleration_pecent_trend = []
+        timeout_num_trend = []
+
+        avg_duration_slo_per_function = {}
+        avg_harvest_cpu_per_function = {}
+        avg_harvest_memory_per_function = {}
+        avg_reduced_duration_per_function = {}
+        for function_id in env.profile.get_function_profile().keys():
+            avg_duration_slo_per_function[function_id] = []
+            avg_harvest_cpu_per_function[function_id] = []
+            avg_harvest_memory_per_function[function_id] = []
+            avg_reduced_duration_per_function[function_id] = []
+
+        for episode_per_exp in range(params.MAX_EPISODE_EVAL):
+            # Record total number of events
+            total_events = env.event_pq.get_total_size()
+
+            # Reset logger, env, agent
+            logger = logger_wrapper.get_logger(rm, False)
+            observation, mask, current_timestep, current_function_id = env.reset()
+
+            actual_time = 0
+            system_time = 0
+            reward_sum = 0
+
+            function_throughput_list = []
+
+            action = {}
+
+            # ENSURE util
+            update_threshold_dict = {}
+            for function_id in env.profile.get_function_profile().keys():
+                update_threshold_dict[function_id] = 0
+
+            episode_done = False
+            while episode_done is False:
+                actual_time = actual_time + 1
+                next_observation, next_mask, reward, done, info, next_timestep, next_function_id = env.step(
+                    current_timestep=current_timestep,
+                    current_function_id=current_function_id,
+                    action=action
+                )
+
+                if system_time < info["system_time"]:
+                    system_time = info["system_time"]
+
                 function_throughput_list.append(info["function_throughput"])
-                request_record = info["request_record"]
-                function_dict = info["function_dict"]
 
-                #
-                # ENSURE dynamic CPU adjustment
-                #
+                logger.debug("")
+                logger.debug("Actual timestep {}".format(actual_time))
+                logger.debug("System timestep {}".format(system_time))
+                logger.debug("Take action: {}".format(action))
+                logger.debug("Observation: {}".format(observation))
+                logger.debug("Reward: {}".format(reward))
 
-                total_available_cpu = info["total_available_cpu"]
-                total_available_memory = info["total_available_memory"]
+                reward_sum = reward_sum + reward
 
-                # Paramters
-                window_size = 10
-                latency_threshold = 1.10
+                if done is False:
+                    request_record = info["request_record"]
+                    total_available_cpu = info["total_available_cpu"]
+                    total_available_memory = info["total_available_memory"]
 
-                function_queue = queue.PriorityQueue()
-                rebalance_list = []
-                action_map = {}
-
-                for function_id in function_dict.keys():
-                    function = function_profile[function_id]
-                    function_stats = function_dict[function_id]
-                    action_map[function_id] = {}
-                    action_map[function_id]["cpu"] = function_stats["cpu"]
-                    action_map[function_id]["memory"] = function_stats["memory"]
+                    #
+                    # ENSURE dynamic CPU adjustment
+                    #
+                
+                    window_size = 3
+                    latency_threshold = 1.10
 
                     # Classify the function
-                    if function_stats["avg_completion_time"] > 5: # MP
-                        function_stats["max_cpu"] = env_params.cpu_cap_per_function
-                        function_stats["num_update_threshold"] = 3
-                        function_stats["cpu_step"] = 0.5
+                    cpu_max = env.env_params.cpu_cap_per_function
+                    if request_record.get_avg_completion_time_per_function(next_function_id) > 5: # MP
+                        num_update_threshold = 5
+                        cpu_step = 1
                     else: # ET
-                        function_stats["max_cpu"] = env_params.cpu_cap_per_function
-                        function_stats["num_update_threshold"] = 5
-                        function_stats["cpu_step"] = 1
+                        num_update_threshold = 3
+                        cpu_step = 2
 
-                    # Only evaluate incoming invocations
-                    if function_stats["invoke_num"] > 0:
-                        priority = function_stats["priority"]
-                        function_queue.put(Prioritize(priority, function_id))
-                    else:
-                        # Otherwise add to rebalance list
-                        if num_update_threshold_dict[function_id] >= function_stats["num_update_threshold"]:
-                            rebalance_list.append(function_id)
-
-                rebalance = False
-
-                while function_queue.empty() is False:
-                    function_id = function_queue.get().item
-                    function_stats = function_dict[function_id]
-                    function = function_profile[function_id]
-                    total_sequence_size = function_stats["total_sequence_size"]
-                    invoke_num = function_stats["invoke_num"]
-                    
-                    # If reach threshold of updates
-                    current_update = num_update_threshold_dict[function_id]
-                    if current_update >= function_stats["num_update_threshold"]:
+                    # If the function reaches threshold of updates
+                    if update_threshold_dict[function_id] >= num_update_threshold:
                         # Monitor via a moving window
-                        request_window = request_record.get_total_request_record_per_function(function_id)[-window_size:]
-                        total_completion_time_in_window = 0
-                        for request in request_window:
-                            total_completion_time_in_window = total_completion_time_in_window + request.get_completion_time()
+                        request_window = request_record.get_last_n_done_request_per_function(next_function_id, window_size)
+                        if len(request_window) > 0:
+                            total_completion_time_in_window = 0
+                            for request in request_window:
+                                total_completion_time_in_window = total_completion_time_in_window + request.get_completion_time()
+                            avg_completion_time_in_window = total_completion_time_in_window / window_size
 
-                        avg_completion_time_in_window = total_completion_time_in_window / window_size
+                            # If performance degrade, increase its CPU allocation based on step
+                            if total_available_cpu > cpu_step:
+                                if avg_completion_time_in_window / env.profile.get_function_profile()[next_function_id].params.min_duration >= latency_threshold:
+                                    action["cpu"] = min(request_window[0].get_cpu() + cpu_step, env.env_params.cpu_cap_per_function)
+                                else:
+                                    action = {} # No increase
+                            else: # If reaches capacity, rebalance CPU from other functions
+                                action["cpu"] = max(request_window[0].get_cpu() - cpu_step, 1)
+                        else:
+                            action = {} # No increase
 
-                        # If performance degrade
-                        if avg_completion_time_in_window / function.params.min_duration >= latency_threshold:
-                            # Increment one step if possible
-                            new_cpu = np.clip(
-                                function_stats["cpu"] + function_stats["cpu_step"], 
-                                function.params.cpu_least_hint,
-                                function_stats["max_cpu"]
-                            )
-                            action_map[function_id]["cpu"] = new_cpu
-
-                            # Otherwise exceed capacity, rebalance from other functions that haven't reached update threshold
-                            if total_available_cpu - new_cpu * invoke_num * total_sequence_size >= 0:
-                                total_available_cpu = total_available_cpu - new_cpu * invoke_num * total_sequence_size
-                            else: 
-                                rebalance = True
-                    
-                        num_update_threshold_dict[function_id] = 0
+                        update_threshold_dict[function_id] = 0
                     else:
-                        num_update_threshold_dict[function_id] = current_update + invoke_num
-                
-                # Rebalance if needed
-                if rebalance is True:
-                    for function_id in rebalance_list:
-                        function_stats = function_dict[function_id]
-                        action_map[function_id]["cpu"] = function_stats["cpu"] - function_stats["cpu_step"]
+                        update_threshold_dict[function_id] = update_threshold_dict[function_id]  + 1
+                else:
+                    if system_time < info["system_time"]:
+                        system_time = info["system_time"]
 
-                action = action_map
-
-            logger.debug("")
-            logger.debug("Actual timestep {}".format(actual_time))
-            logger.debug("System timestep {}".format(system_time))
-            logger.debug("Take action: {}".format(action))
-            logger.debug("Observation: {}".format(observation))
-            logger.debug("Reward: {}".format(reward))
-            
-            reward_sum = reward_sum + reward
-            
-            if done:
-                avg_completion_time = info["avg_completion_time"]
-                timeout_num = info["timeout_num"]
+                    avg_duration_slo = info["avg_duration_slo"]
+                    avg_harvest_cpu_percent = info["avg_harvest_cpu_percent"]
+                    avg_harvest_memory_percent = info["avg_harvest_memory_percent"]
+                    slo_violation_percent = info["slo_violation_percent"]
+                    acceleration_pecent = info["acceleration_pecent"]
+                    timeout_num = info["timeout_num"]
                 
-                logger.info("")
-                logger.info("**********")
-                logger.info("**********")
-                logger.info("**********")
-                logger.info("")
-                logger.info("Running {}".format(rm))
-                logger.info("Episode {} finished after:".format(episode))
-                logger.info("{} actual timesteps".format(actual_time))
-                logger.info("{} system timesteps".format(system_time))
-                logger.info("Total reward: {}".format(reward_sum))
-                logger.info("Avg completion time: {}".format(avg_completion_time))
-                logger.info("Timeout num: {}".format(timeout_num))
+                    logger.info("")
+                    logger.info("**********")
+                    logger.info("**********")
+                    logger.info("**********")
+                    logger.info("")
+                    logger.info("Running {}".format(rm))
+                    logger.info("Exp {}, Episode {} finished".format(exp_id, episode))
+                    logger.info("{} actual timesteps".format(actual_time))
+                    logger.info("{} system timesteps".format(system_time))
+                    logger.info("Total events: {}".format(total_events))
+                    logger.info("Total reward: {}".format(reward_sum))
+                    logger.info("Avg relative duration: {}".format(avg_duration_slo))
+                    logger.info("Avg harvest CPU percent: {}".format(avg_harvest_cpu_percent))
+                    logger.info("Avg harvest memory percent: {}".format(avg_harvest_memory_percent))
+                    logger.info("SLO violation percent: {}".format(slo_violation_percent))
+                    logger.info("Acceleration pecent: {}".format(acceleration_pecent))
+                    logger.info("Timeout num: {}".format(timeout_num))
+                    logger.info("")
                 
-                reward_trend.append(reward_sum)
-                avg_completion_time_trend.append(avg_completion_time)
-                timeout_num_trend.append(timeout_num)
+                    reward_trend.append(reward_sum)
+                    avg_duration_slo_trend.append(avg_duration_slo)
+                    avg_harvest_cpu_percent_trend.append(avg_harvest_cpu_percent)
+                    avg_harvest_memory_percent_trend.append(avg_harvest_memory_percent)
+                    slo_violation_percent_trend.append(slo_violation_percent)
+                    acceleration_pecent_trend.append(acceleration_pecent)
+                    timeout_num_trend.append(timeout_num)
+                    
+                    request_record = info["request_record"]
 
-                # Log average completion time per function
-                request_record = info["request_record"]
-                for function_id in avg_completion_time_per_function_trend.keys():
-                    avg_completion_time_per_function_trend[function_id].append(
-                        request_record.get_avg_completion_time_per_function(function_id)
+                    # Log per function
+                    for function_id in avg_duration_slo_per_function.keys():
+                        avg_duration_slo_per_function[function_id].append(request_record.get_avg_duration_slo_per_function(function_id))
+                        avg_harvest_cpu_per_function[function_id].append(request_record.get_avg_harvest_cpu_per_function(function_id))
+                        avg_harvest_memory_per_function[function_id].append(request_record.get_avg_harvest_memory_per_function(function_id))
+                        avg_reduced_duration_per_function[function_id].append(request_record.get_reduced_duration_per_function(function_id))
+                    
+                    # Log function throughput
+                    log_function_throughput(
+                        overwrite=False, 
+                        rm_name=rm, 
+                        exp_id=exp_id,
+                        logger_wrapper=logger_wrapper,
+                        episode=episode, 
+                        function_throughput_list=function_throughput_list
                     )
 
-                # Log resource utilization 
-                resource_utils_record = info["resource_utils_record"]
-                log_resource_utils(
-                    logger_wrapper=logger_wrapper,
-                    rm_name=rm, 
-                    overwrite=False, 
-                    episode=episode, 
-                    resource_utils_record=resource_utils_record
-                )
-
-                # Log function throughput
-                log_function_throughput(
-                    logger_wrapper=logger_wrapper,
-                    rm_name=rm, 
-                    overwrite=False, 
-                    episode=episode, 
-                    function_throughput_list=function_throughput_list
-                )
-                
-                episode_done = True
+                    # Log per invocation
+                    log_per_invocation(
+                        overwrite=False,
+                        rm_name=rm,
+                        exp_id=exp_id,
+                        logger_wrapper=logger_wrapper,
+                        episode=episode, 
+                        duration_slo_per_invocation=request_record.get_duration_slo_per_invocation(),
+                        harvest_cpu_per_invocation=request_record.get_harvest_cpu_per_invocation(),
+                        harvest_memory_per_invocation=request_record.get_harvest_memory_per_invocation(),
+                        reduced_duration_per_invocation=request_record.get_reduced_duration_per_invocation()
+                    )
+                    
+                    episode_done = True
             
-            observation = next_observation
-            mask = next_mask
+                observation = next_observation
+                mask = next_mask
+                current_timestep = next_timestep
+                current_function_id = next_function_id
+
+            episode = episode + 1
     
-    # Plot each episode 
-    plotter = Plotter()
-    
-    if save_plot is True:
-        plotter.plot_save(
-            prefix_name=rm, 
-            reward_trend=reward_trend, 
-            avg_completion_time_trend=avg_completion_time_trend,
+        # Log trends
+        log_trends(
+            overwrite=False,
+            rm_name=rm,
+            exp_id=exp_id,
+            logger_wrapper=logger_wrapper,
+            reward_trend=reward_trend,
+            avg_duration_slo_trend=avg_duration_slo_trend,
+            avg_harvest_cpu_percent_trend=avg_harvest_cpu_percent_trend,
+            avg_harvest_memory_percent_trend=avg_harvest_memory_percent_trend,
+            slo_violation_percent_trend=slo_violation_percent_trend,
+            acceleration_pecent_trend=acceleration_pecent_trend,
             timeout_num_trend=timeout_num_trend
         )
-    if show_plot is True:
-        plotter.plot_show(
-            reward_trend=reward_trend, 
-            avg_completion_time_trend=avg_completion_time_trend,
-            timeout_num_trend=timeout_num_trend,
+
+        # Log per function
+        log_per_function(
+            overwrite=False, 
+            rm_name=rm, 
+            exp_id=exp_id,
+            logger_wrapper=logger_wrapper,
+            avg_duration_slo_per_function=avg_duration_slo_per_function,
+            avg_harvest_cpu_per_function=avg_harvest_cpu_per_function,
+            avg_harvest_memory_per_function=avg_harvest_memory_per_function,
+            avg_reduced_duration_per_function=avg_reduced_duration_per_function
         )
-        
-    # Log trends
-    log_trends(
-        logger_wrapper=logger_wrapper,
-        rm_name=rm,
-        overwrite=False,
-        reward_trend=reward_trend,
-        avg_completion_time_trend=avg_completion_time_trend,
-        avg_completion_time_per_function_trend=avg_completion_time_per_function_trend,
-        timeout_num_trend=timeout_num_trend,
-        loss_trend=None,
-    )
+    

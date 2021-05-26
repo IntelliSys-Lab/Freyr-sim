@@ -14,17 +14,17 @@ def launch():
     # Set up logger wrapper
     logger_wrapper = Logger()
 
-    # fixed_rm(
-    #     logger_wrapper=logger_wrapper
-    # )
+    fixed_rm(
+        logger_wrapper=logger_wrapper
+    )
 
-    # greedy_rm(
-    #     logger_wrapper=logger_wrapper
-    # )
+    greedy_rm(
+        logger_wrapper=logger_wrapper
+    )
 
-    # ensure_rm(
-    #     logger_wrapper=logger_wrapper
-    # )
+    ensure_rm(
+        logger_wrapper=logger_wrapper
+    )
 
     lambda_rm_eval(
         logger_wrapper=logger_wrapper

@@ -60,7 +60,7 @@ class Function():
             memory_delay_factor = (self.params.ideal_memory - memory_mb) / (self.params.ideal_memory - least_memory_mb)
         memory_duration_increment = memory_duration * memory_delay_factor
 
-        self.duration = self.params.min_duration + cpu_duration_increment + memory_duration_increment
+        self.duration = int(self.params.min_duration + cpu_duration_increment + memory_duration_increment) + 1
 
         # print("ideal_memory: {}, memory_mb: {}".format(self.params.ideal_memory, memory_mb))
         # print("cpu_delay_factor: {}".format(cpu_delay_factor))
@@ -114,6 +114,7 @@ class Request():
         self.profile = cp.deepcopy(function)
         self.request_id = uuid.uuid1()
         
+        self.init_time = 0
         self.progress = 0
         self.waiting = 0
         self.status = "undone"
@@ -125,10 +126,6 @@ class Request():
 
     def set_is_cold_start(self, is_cold_start):
         self.is_cold_start = is_cold_start
-
-        # Add cold start overhead
-        if self.is_cold_start is True:
-            self.profile.duration = self.profile.duration + self.profile.params.cold_start_time
 
     def get_cpu(self):
         return self.profile.get_cpu()
@@ -160,11 +157,17 @@ class Request():
     def get_progress_time(self):
         return self.progress
 
+    def get_duration(self):
+        return self.progress
+
     def get_duration_slo(self):
         return self.progress / self.profile.get_baseline()
 
+    def get_baseline(self):
+        return self.profile.get_baseline()
+
     def get_completion_time(self):
-        return self.progress + self.waiting
+        return self.init_time + self.progress + self.waiting
 
     def get_completion_time_slo(self):
         return self.get_completion_time() / self.profile.get_baseline()
@@ -184,7 +187,11 @@ class Request():
     def step(self, system_time, in_registry):
         # In Registry
         if in_registry is True:
-            self.progress = self.progress + 1
+            # If cold start
+            if self.is_cold_start is True and self.init_time < self.profile.params.cold_start_time:
+                self.init_time = self.init_time + 1
+            else:
+                self.progress = self.progress + 1
             
             # Check status
             if self.progress >= self.profile.params.timeout:
@@ -276,6 +283,8 @@ class RequestRecord():
             elif duration_slo > 1:
                 bad_slo = bad_slo + (duration_slo - 1) * (request.get_cpu_user_defined() + request.get_memory_user_defined())
 
+            total_duration_slo = total_duration_slo + duration_slo
+
             if status == "success":
                 self.success_request_record.append(request)
                 self.success_request_record_per_function[function_id].append(request)
@@ -300,14 +309,17 @@ class RequestRecord():
     def get_timeout_size(self):
         return len(self.timeout_request_record)
 
-    def get_last_done_request_per_function(self, function_id):
-        last_request = None
+    def get_last_n_done_request_per_function(self, function_id, n):
+        last_n_request = []
+
         for request in reversed(self.total_request_record_per_function[function_id]):
             if request.get_status() != "undone":
-                last_request = request
+                last_n_request.append(request)
+            
+            if len(last_n_request) == n:
                 break
 
-        return last_request
+        return last_n_request
 
     def get_avg_duration_slo(self):
         request_num = 0
@@ -317,9 +329,9 @@ class RequestRecord():
             request_num = request_num + 1
             total_duration_slo = total_duration_slo + request.get_duration_slo()
 
-        for request in self.timeout_request_record:
-            request_num = request_num + 1
-            total_duration_slo = total_duration_slo + request.get_duration_slo()
+        # for request in self.timeout_request_record:
+        #     request_num = request_num + 1
+        #     total_duration_slo = total_duration_slo + request.get_duration_slo()
 
         if request_num == 0:
             avg_duration_slo = 0
@@ -520,9 +532,9 @@ class RequestRecord():
             request_num = request_num + 1
             total_duration_slo = total_duration_slo + request.get_duration_slo()
 
-        for request in self.timeout_request_record_per_function[function_id]:
-            request_num = request_num + 1
-            total_duration_slo = total_duration_slo + request.get_duration_slo()
+        # for request in self.timeout_request_record_per_function[function_id]:
+        #     request_num = request_num + 1
+        #     total_duration_slo = total_duration_slo + request.get_duration_slo()
         
         if request_num == 0:
             avg_duration_slo_per_function = 0
@@ -657,7 +669,7 @@ class RequestRecord():
         request_num = 0
 
         for request in self.success_request_record:
-            if request.get_duration_slo() > 1.15:
+            if request.get_duration_slo() > 1:
                 request_num = request_num + 1
 
         return request_num / len(self.success_request_record)
@@ -670,6 +682,75 @@ class RequestRecord():
                 request_num = request_num + 1
 
         return request_num / len(self.success_request_record)
+
+    def get_avg_harvest_cpu_per_function(self, function_id):
+        request_num = 0
+        total_harvest_cpu_per_function = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_harvest_cpu_per_function = total_harvest_cpu_per_function + (request.get_cpu_user_defined() - request.get_cpu())
+
+        if request_num == 0:
+            avg_harvest_cpu_per_function = 0
+        else:
+            avg_harvest_cpu_per_function = total_harvest_cpu_per_function / request_num
+        
+        return avg_harvest_cpu_per_function
+
+    def get_avg_harvest_memory_per_function(self, function_id):
+        request_num = 0
+        total_harvest_memory_per_function = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_harvest_memory_per_function = total_harvest_memory_per_function + (request.get_memory_user_defined() - request.get_memory())
+
+        if request_num == 0:
+            avg_harvest_memory_per_function = 0
+        else:
+            avg_harvest_memory_per_function = total_harvest_memory_per_function / request_num
+
+    def get_reduced_duration_per_function(self, function_id):
+        request_num = 0
+        total_reduced_duration_per_function = 0
+
+        for request in self.success_request_record_per_function[function_id]:
+            request_num = request_num + 1
+            total_reduced_duration_per_function = total_reduced_duration_per_function + (request.get_baseline() - request.get_duration())
+
+        if request_num == 0:
+            avg_reduced_duration_per_function = 0
+        else:
+            avg_reduced_duration_per_function = total_reduced_duration_per_function / request_num
+
+    def get_duration_slo_per_invocation(self):
+        invocation_list = []
+        for request in self.success_request_record:
+            invocation_list.append(request.get_duration_slo())
+
+        return invocation_list
+
+    def get_harvest_cpu_per_invocation(self):
+        invocation_list = []
+        for request in self.success_request_record:
+            invocation_list.append(request.get_cpu_user_defined() - request.get_cpu())
+
+        return invocation_list
+
+    def get_harvest_memory_per_invocation(self):
+        invocation_list = []
+        for request in self.success_request_record:
+            invocation_list.append(request.get_memory_user_defined() - request.get_memory())
+
+        return invocation_list
+
+    def get_reduced_duration_per_invocation(self):
+        invocation_list = []
+        for request in self.success_request_record:
+            invocation_list.append(request.get_baseline() - request.get_duration())
+
+        return invocation_list
 
     def get_total_request_record(self):
         return self.total_request_record

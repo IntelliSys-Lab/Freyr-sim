@@ -105,14 +105,11 @@ def sample_from_azure(
 
     # Adapt to experimental traces
     # print("trace_dict length: {}".format(len(trace_dict)))
-    trigger_count = {
-        "http": 0,
-        "queue": 0,
-        "event": 0,
-        "orchestration": 0,
-        "timer": 0,
-        "storage": 0,
-        "others": 0
+    metrics_dict = {
+        "func_hash": [],
+        "total_iat": 0,
+        "calls": 0,
+        "total_duration": 0
     }
 
     memory_trace_header = ["HashFunction", "SampleCount", "AverageAllocatedMb", "AverageAllocatedMb_pct1", \
@@ -138,8 +135,15 @@ def sample_from_azure(
 
         for index, function_id in enumerate(exp_func_list):
             func_hash = func_hash_list[index]
-
             invocation_trace = trace_dict[func_hash]["invocation_trace"][:random_timestep]
+
+            # Record workload metrics
+            if func_hash not in metrics_dict["func_hash"]:
+                metrics_dict["func_hash"].append(func_hash)
+            metrics_dict["calls"] = metrics_dict["calls"] + sum(invocation_trace)
+            metrics_dict["total_iat"] = metrics_dict["total_iat"] + (len(invocation_trace) - 1)
+            metrics_dict["total_duration"] = metrics_dict["total_duration"] + (len(invocation_trace))
+
             invocation_trace.insert(0, trace_dict[func_hash]["Trigger"])
             invocation_trace.insert(0, function_id)
             invocation_trace_csv.append(invocation_trace)
@@ -174,21 +178,6 @@ def sample_from_azure(
                     duration_trace.append(duration_trace_dict[header])
             duration_trace_csv.append(duration_trace)
 
-            if trace_dict[func_hash]["Trigger"] == "http":
-                trigger_count["http"] = trigger_count["http"] + 1
-            elif trace_dict[func_hash]["Trigger"] == "queue":
-                trigger_count["queue"] = trigger_count["queue"] + 1
-            elif trace_dict[func_hash]["Trigger"] == "event":
-                trigger_count["event"] = trigger_count["event"] + 1
-            elif trace_dict[func_hash]["Trigger"] == "orchestration":
-                trigger_count["orchestration"] = trigger_count["orchestration"] + 1
-            elif trace_dict[func_hash]["Trigger"] == "timer":
-                trigger_count["timer"] = trigger_count["timer"] + 1
-            elif trace_dict[func_hash]["Trigger"] == "storage":
-                trigger_count["storage"] = trigger_count["storage"] + 1
-            elif trace_dict[func_hash]["Trigger"] == "others":
-                trigger_count["others"] = trigger_count["others"] + 1
-
         with open(azure_file_path + "sampled_invocation_traces_{}.csv".format(i), "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerows(invocation_trace_csv)
@@ -201,13 +190,16 @@ def sample_from_azure(
             writer = csv.writer(f)
             writer.writerows(duration_trace_csv)
 
-    with open(azure_file_path + "sampled_trigger_dist.csv", "w", newline="") as f:
+    with open(azure_file_path + "z_metrics.csv", "w", newline="") as f:
         writer = csv.writer(f)
-        trigger_dist_csv = []
-        for trigger in trigger_count.keys():
-            trigger_dist_csv.append([trigger, trigger_count[trigger]])
+        metrics_dist_csv = []
 
-        writer.writerows(trigger_dist_csv)
+        metrics_dist_csv.append(["funcs", len(metrics_dict["func_hash"])])
+        metrics_dist_csv.append(["calls", metrics_dict["calls"]])
+        metrics_dist_csv.append(["avg_iat", metrics_dict["total_iat"]/metrics_dict["calls"]])
+        metrics_dist_csv.append(["request_per_sec", metrics_dict["calls"]/metrics_dict["total_duration"]])
+
+        writer.writerows(metrics_dist_csv)
 
 #
 # Clean old sample files
@@ -228,14 +220,14 @@ def clean_old_samples(
 
 if __name__ == "__main__":
     azure_file_path = "azurefunctions-dataset2019/"
-    max_exp = 100
+    max_exp = 1
     max_functions = 1000
     max_timestep = 60
-    min_timestep = 30
-    max_invoke_per_time = 10
+    min_timestep = 60
+    max_invoke_per_time = 100
     min_invoke_per_time = 0
-    max_invoke_per_func = 20
-    min_invoke_per_func = 1
+    max_invoke_per_func = 1000
+    min_invoke_per_func = 10
     exp_func_list = [function_index for function_index in range(max_functions)]
 
     print("Clean old sample files...")

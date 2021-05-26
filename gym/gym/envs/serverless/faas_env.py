@@ -74,10 +74,13 @@ class FaaSEnv(gym.Env):
     #
 
     def update_function_profile(self, next_function_id, action):
-        if action is not None:
+        if isinstance(action, dict):
             function = self.profile.get_function_profile()[next_function_id]
-            function.set_function(cpu=action["cpu"], memory=action["memory"])
-
+            if "cpu" in action:
+                function.set_function(cpu=action["cpu"], memory=function.get_memory())
+            if "memory" in action:
+                function.set_function(cpu=function.get_cpu(), memory=action["memory"])
+            
     #            
     # Update the cluster
     #
@@ -193,18 +196,16 @@ class FaaSEnv(gym.Env):
         cpu_user_defined = function.get_cpu_user_defined()
         memory_user_defined = function.get_memory_user_defined()
         
-        last_request = self.request_record.get_last_done_request_per_function(next_function_id)
+        last_request = self.request_record.get_last_n_done_request_per_function(next_function_id, 1)
         is_safeguard = False
 
-        if last_request is None or last_request.get_status() == "timeout":
+        # if last_request is None or last_request.get_status() == "timeout":
+        if len(last_request) == 0:
             cpu_range = [cpu_user_defined]
             memory_range = [memory_user_defined]
             is_safeguard = True
-            # if last_request is None:
-                # print("{} first request, safeguard activate".format(next_function_id))
-            # elif last_request.get_is_success() is False:
-                # print("{} last request failed, safeguard activate".format(next_function_id))
         else:
+            last_request = last_request[0]
             last_cpu_alloc = last_request.get_cpu()
             last_mem_alloc = last_request.get_memory()
             last_cpu_peak = last_request.get_cpu_peak()

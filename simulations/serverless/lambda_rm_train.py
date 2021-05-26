@@ -179,7 +179,7 @@ def lambda_rm_train(
                     logger.info("Running {}".format(rm))
                     logger.info("Exp {}, Episode {} finished".format(exp_id, episode))
                     logger.info("{} actual timesteps".format(actual_time))
-                    logger.info("{} system timesteps".format(system_runtime))
+                    logger.info("{} system timesteps".format(system_time))
                     logger.info("Total events: {}".format(total_events))
                     logger.info("Total reward: {}".format(reward_sum))
                     logger.info("Avg relative duration: {}".format(avg_duration_slo))

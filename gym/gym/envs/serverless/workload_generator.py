@@ -67,7 +67,7 @@ class WorkloadGenerator():
             # Max timeout limit
             # Reference: https://docs.microsoft.com/en-us/azure/azure-functions/functions-scale
             if invocation_trace["Trigger"] == "http":
-                function_params_dict[function_hash]["timeout"] = 230 
+                function_params_dict[function_hash]["timeout"] = 230
             else:
                 function_params_dict[function_hash]["timeout"] = 600
 

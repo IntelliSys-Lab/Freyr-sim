@@ -19,7 +19,6 @@ def log_trends(
     acceleration_pecent_trend,
     timeout_num_trend,
     avg_interval_trend=None,
-    avg_duration_slo_per_function_trend=None,
     loss_trend=None,
 ):
     # Log reward trend
@@ -35,17 +34,6 @@ def log_trends(
     logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
     logger.debug(','.join(str(avg_duration_slo) for avg_duration_slo in avg_duration_slo_trend))
-
-    # Log avg duration slo per function trend 
-    if avg_duration_slo_per_function_trend is not None:
-        logger = logger_wrapper.get_logger("AvgDurationSLOPerFunctionTrends", overwrite)
-        logger.debug("")
-        logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-        logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
-        logger.debug("")
-        for function_id in avg_duration_slo_per_function_trend.keys():
-            logger.debug("{}:".format(function_id))
-            logger.debug(','.join(str(avg_duration_slo) for avg_duration_slo in avg_duration_slo_per_function_trend[function_id]))
 
     # Log timeout number trend
     logger = logger_wrapper.get_logger("TimeoutNumTrends", overwrite)
@@ -157,8 +145,90 @@ def log_function_throughput(
     logger.debug("")
     logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     logger.debug("RM {}, EXP {}, Episode {}:".format(rm_name, exp_id, episode))
-    logger.debug("function_throughput")
     logger.debug(','.join(str(function_throughput) for function_throughput in function_throughput_list))
+
+    # Rollback handler 
+    logger = logger_wrapper.get_logger(rm_name, False)
+
+def log_per_invocation(
+    overwrite,
+    rm_name,
+    exp_id,
+    logger_wrapper,
+    episode,
+    duration_slo_per_invocation,
+    harvest_cpu_per_invocation,
+    harvest_memory_per_invocation,
+    reduced_duration_per_invocation
+):
+    logger = logger_wrapper.get_logger("duration_slo_per_invocation", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}, Episode {}:".format(rm_name, exp_id, episode))
+    logger.debug(','.join(str(duration_slo) for duration_slo in duration_slo_per_invocation))
+
+    logger = logger_wrapper.get_logger("harvest_cpu_per_invocation", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}, Episode {}:".format(rm_name, exp_id, episode))
+    logger.debug(','.join(str(harvest_cpu) for harvest_cpu in harvest_cpu_per_invocation))
+
+    logger = logger_wrapper.get_logger("harvest_memory_per_invocation", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}, Episode {}:".format(rm_name, exp_id, episode))
+    logger.debug(','.join(str(harvest_memory) for harvest_memory in harvest_memory_per_invocation))
+
+    logger = logger_wrapper.get_logger("reduced_duration_per_invocation", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}, Episode {}:".format(rm_name, exp_id, episode))
+    logger.debug(','.join(str(reduced_duration) for reduced_duration in reduced_duration_per_invocation))
+
+    # Rollback handler 
+    logger = logger_wrapper.get_logger(rm_name, False)
+
+def log_per_function(
+    overwrite,
+    rm_name,
+    exp_id,
+    logger_wrapper,
+    avg_duration_slo_per_function,
+    avg_harvest_cpu_per_function,
+    avg_harvest_memory_per_function,
+    avg_reduced_duration_per_function
+):
+    logger = logger_wrapper.get_logger("avg_duration_slo_per_function", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
+    for function_id in avg_duration_slo_per_function.keys():
+        logger.debug("{}:".format(function_id))
+        logger.debug(','.join(str(avg_duration_slo) for avg_duration_slo in avg_duration_slo_per_function[function_id]))
+
+    logger = logger_wrapper.get_logger("avg_harvest_cpu_per_function", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
+    for function_id in avg_harvest_cpu_per_function.keys():
+        logger.debug("{}:".format(function_id))
+        logger.debug(','.join(str(avg_harvest_cpu) for avg_harvest_cpu in avg_harvest_cpu_per_function[function_id]))
+
+    logger = logger_wrapper.get_logger("avg_harvest_memory_per_function", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
+    for function_id in avg_harvest_memory_per_function.keys():
+        logger.debug("{}:".format(function_id))
+        logger.debug(','.join(str(avg_harvest_memory) for avg_harvest_memory in avg_harvest_memory_per_function[function_id]))
+    
+    logger = logger_wrapper.get_logger("avg_reduced_duration_per_function", overwrite)
+    logger.debug("")
+    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    logger.debug("RM {}, EXP {}".format(rm_name, exp_id))
+    for function_id in avg_reduced_duration_per_function.keys():
+        logger.debug("{}:".format(function_id))
+        logger.debug(','.join(str(avg_reduced_duration) for avg_reduced_duration in avg_reduced_duration_per_function[function_id]))
 
     # Rollback handler 
     logger = logger_wrapper.get_logger(rm_name, False)
