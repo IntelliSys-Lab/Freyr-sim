@@ -1,5 +1,6 @@
 import time
 import numpy as np
+import csv
 
 
 #
@@ -150,44 +151,6 @@ def log_function_throughput(
     # Rollback handler 
     logger = logger_wrapper.get_logger(rm_name, False)
 
-def log_per_invocation(
-    overwrite,
-    rm_name,
-    exp_id,
-    logger_wrapper,
-    episode,
-    duration_slo_per_invocation,
-    harvest_cpu_per_invocation,
-    harvest_memory_per_invocation,
-    reduced_duration_per_invocation
-):
-    logger = logger_wrapper.get_logger("duration_slo_per_invocation", overwrite)
-    logger.debug("")
-    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    logger.debug("RM {}, EXP {}, Episode {}:".format(rm_name, exp_id, episode))
-    logger.debug(','.join(str(duration_slo) for duration_slo in duration_slo_per_invocation))
-
-    logger = logger_wrapper.get_logger("harvest_cpu_per_invocation", overwrite)
-    logger.debug("")
-    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    logger.debug("RM {}, EXP {}, Episode {}:".format(rm_name, exp_id, episode))
-    logger.debug(','.join(str(harvest_cpu) for harvest_cpu in harvest_cpu_per_invocation))
-
-    logger = logger_wrapper.get_logger("harvest_memory_per_invocation", overwrite)
-    logger.debug("")
-    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    logger.debug("RM {}, EXP {}, Episode {}:".format(rm_name, exp_id, episode))
-    logger.debug(','.join(str(harvest_memory) for harvest_memory in harvest_memory_per_invocation))
-
-    logger = logger_wrapper.get_logger("reduced_duration_per_invocation", overwrite)
-    logger.debug("")
-    logger.debug(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-    logger.debug("RM {}, EXP {}, Episode {}:".format(rm_name, exp_id, episode))
-    logger.debug(','.join(str(reduced_duration) for reduced_duration in reduced_duration_per_invocation))
-
-    # Rollback handler 
-    logger = logger_wrapper.get_logger(rm_name, False)
-
 def log_per_function(
     overwrite,
     rm_name,
@@ -232,3 +195,29 @@ def log_per_function(
 
     # Rollback handler 
     logger = logger_wrapper.get_logger(rm_name, False)
+
+def export_csv_per_invocation(
+    rm_name,
+    exp_id,
+    episode,
+    csv_per_invocation
+):
+    file_path = "logs/"
+    file_name = "{}_{}_{}_per_invocation.csv".format(rm_name, exp_id, episode)
+
+    with open(file_path + file_name, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerows(csv_per_invocation)
+
+def export_csv_percentile(
+    rm_name,
+    exp_id,
+    episode,
+    csv_percentile
+):
+    file_path = "logs/"
+    file_name = "{}_{}_{}_percentile.csv".format(rm_name, exp_id, episode)
+
+    with open(file_path + file_name, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerows(csv_percentile)

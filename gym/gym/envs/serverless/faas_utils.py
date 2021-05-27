@@ -87,7 +87,7 @@ class Function():
         return self.params.ideal_cpu
 
     def get_ideal_memory(self):
-        return self.params.ideal_memory
+        return np.clip(int(self.params.ideal_memory / self.params.memory_mb_limit * self.params.memory_cap_per_function) + 1, 1, self.params.memory_cap_per_function)
 
     def get_cpu_user_defined(self):
         return self.params.cpu_user_defined
@@ -724,34 +724,31 @@ class RequestRecord():
         else:
             avg_reduced_duration_per_function = total_reduced_duration_per_function / request_num
 
-    def get_duration_slo_per_invocation(self):
-        invocation_list = []
+    def get_csv_per_invocation(self):
+        csv_per_invocation = []
         for request in self.success_request_record:
-            invocation_list.append(request.get_duration_slo())
+            # [Harvested CPU, Harvested Memory, RFET]
+            csv_per_invocation.append(
+                [request.get_cpu_user_defined() - request.get_cpu(), 
+                request.get_memory_user_defined() - request.get_memory(),
+                request.get_duration_slo()]
+            )
 
-        return invocation_list
+        return csv_per_invocation
 
-    def get_harvest_cpu_per_invocation(self):
-        invocation_list = []
+    def get_csv_percentile(self):
+        duration_per_invocation = []
         for request in self.success_request_record:
-            invocation_list.append(request.get_cpu_user_defined() - request.get_cpu())
+            duration_per_invocation.append(request.get_duration())
 
-        return invocation_list
+        csv_percentile = []
+        for i in range(1, 101):
+            csv_percentile.append(
+                [np.percentile(duration_per_invocation, i), i]
+            )
 
-    def get_harvest_memory_per_invocation(self):
-        invocation_list = []
-        for request in self.success_request_record:
-            invocation_list.append(request.get_memory_user_defined() - request.get_memory())
-
-        return invocation_list
-
-    def get_reduced_duration_per_invocation(self):
-        invocation_list = []
-        for request in self.success_request_record:
-            invocation_list.append(request.get_baseline() - request.get_duration())
-
-        return invocation_list
-
+        return csv_percentile
+        
     def get_total_request_record(self):
         return self.total_request_record
 

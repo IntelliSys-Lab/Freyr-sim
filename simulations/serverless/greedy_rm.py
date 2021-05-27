@@ -4,7 +4,7 @@ import gym
 
 from gym.envs.serverless.faas_params import WorkloadParameters, EnvParameters
 from logger import Logger
-from utils import log_trends, log_function_throughput, log_per_function, log_per_invocation
+from utils import log_trends, log_function_throughput, export_csv_percentile, export_csv_per_invocation
 import params
 
 
@@ -58,16 +58,6 @@ def greedy_rm(
         acceleration_pecent_trend = []
         timeout_num_trend = []
 
-        avg_duration_slo_per_function = {}
-        avg_harvest_cpu_per_function = {}
-        avg_harvest_memory_per_function = {}
-        avg_reduced_duration_per_function = {}
-        for function_id in env.profile.get_function_profile().keys():
-            avg_duration_slo_per_function[function_id] = []
-            avg_harvest_cpu_per_function[function_id] = []
-            avg_harvest_memory_per_function[function_id] = []
-            avg_reduced_duration_per_function[function_id] = []
-
         for episode_per_exp in range(params.MAX_EPISODE_EVAL):
             # Record total number of events
             total_events = env.event_pq.get_total_size()
@@ -116,7 +106,7 @@ def greedy_rm(
                     # Greedy 
                     #
 
-                    step = 1
+                    step = 2
                     last_request = request_record.get_last_n_done_request_per_function(next_function_id, 1)
 
                     if len(last_request) == 0:
@@ -125,13 +115,13 @@ def greedy_rm(
                         last_request = last_request[0]
 
                         # CPU
-                        if last_request.get_cpu_peak() < last_request.get_cpu(): # Over-provisioned
+                        if last_request.get_cpu_peak() / last_request.get_cpu() <= 0.9 : # Over-provisioned
                             action["cpu"] = max(last_request.get_cpu() - step, 1)
                         else: # Under-provisioned
                             action["cpu"] = min(last_request.get_cpu() + step, env.env_params.cpu_cap_per_function)
 
                         # Memory
-                        if last_request.get_memory_peak() < last_request.get_memory(): # Over-provisioned
+                        if last_request.get_memory_peak() / last_request.get_memory() <= 0.9: # Over-provisioned
                             action["memory"] = max(last_request.get_memory() - step, 1)
                         else: # Under-provisioned
                             action["memory"] = min(last_request.get_memory() + step, env.env_params.memory_cap_per_function)
@@ -175,13 +165,6 @@ def greedy_rm(
                     
                     request_record = info["request_record"]
 
-                    # Log per function
-                    for function_id in avg_duration_slo_per_function.keys():
-                        avg_duration_slo_per_function[function_id].append(request_record.get_avg_duration_slo_per_function(function_id))
-                        avg_harvest_cpu_per_function[function_id].append(request_record.get_avg_harvest_cpu_per_function(function_id))
-                        avg_harvest_memory_per_function[function_id].append(request_record.get_avg_harvest_memory_per_function(function_id))
-                        avg_reduced_duration_per_function[function_id].append(request_record.get_reduced_duration_per_function(function_id))
-                    
                     # Log function throughput
                     log_function_throughput(
                         overwrite=False, 
@@ -192,17 +175,20 @@ def greedy_rm(
                         function_throughput_list=function_throughput_list
                     )
 
-                    # Log per invocation
-                    log_per_invocation(
-                        overwrite=False,
+                    # Export csv per invocation
+                    export_csv_per_invocation(
                         rm_name=rm,
                         exp_id=exp_id,
-                        logger_wrapper=logger_wrapper,
-                        episode=episode, 
-                        duration_slo_per_invocation=request_record.get_duration_slo_per_invocation(),
-                        harvest_cpu_per_invocation=request_record.get_harvest_cpu_per_invocation(),
-                        harvest_memory_per_invocation=request_record.get_harvest_memory_per_invocation(),
-                        reduced_duration_per_invocation=request_record.get_reduced_duration_per_invocation()
+                        episode=episode,
+                        csv_per_invocation=request_record.get_csv_per_invocation()
+                    )
+
+                    # Export csv percentile
+                    export_csv_percentile(
+                        rm_name=rm,
+                        exp_id=exp_id,
+                        episode=episode,
+                        csv_percentile=request_record.get_csv_percentile()
                     )
                     
                     episode_done = True
@@ -228,16 +214,3 @@ def greedy_rm(
             acceleration_pecent_trend=acceleration_pecent_trend,
             timeout_num_trend=timeout_num_trend
         )
-
-        # Log per function
-        log_per_function(
-            overwrite=False, 
-            rm_name=rm, 
-            exp_id=exp_id,
-            logger_wrapper=logger_wrapper,
-            avg_duration_slo_per_function=avg_duration_slo_per_function,
-            avg_harvest_cpu_per_function=avg_harvest_cpu_per_function,
-            avg_harvest_memory_per_function=avg_harvest_memory_per_function,
-            avg_reduced_duration_per_function=avg_reduced_duration_per_function
-        )
-    

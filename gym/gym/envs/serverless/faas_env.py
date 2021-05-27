@@ -302,7 +302,8 @@ class FaaSEnv(gym.Env):
             info["slo_violation_percent"] = self.request_record.get_slo_violation_percent()
             info["acceleration_pecent"] = self.request_record.get_acceleration_pecent()
             info["timeout_num"] = self.request_record.get_timeout_size()
-            info["request_record"] = self.request_record
+            info["csv_per_invocation"] = self.request_record.get_csv_per_invocation()
+            info["csv_percentile"] = self.request_record.get_csv_percentile()
             # info["avg_interval"] = self.request_record.get_avg_interval()
         
         return info

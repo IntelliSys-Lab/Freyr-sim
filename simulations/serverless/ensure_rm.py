@@ -4,7 +4,7 @@ import gym
 
 from gym.envs.serverless.faas_params import WorkloadParameters, EnvParameters
 from logger import Logger
-from utils import log_trends, log_function_throughput, log_per_function, log_per_invocation
+from utils import log_trends, log_function_throughput, export_csv_percentile, export_csv_per_invocation
 import params
 
 
@@ -57,16 +57,6 @@ def ensure_rm(
         slo_violation_percent_trend = []
         acceleration_pecent_trend = []
         timeout_num_trend = []
-
-        avg_duration_slo_per_function = {}
-        avg_harvest_cpu_per_function = {}
-        avg_harvest_memory_per_function = {}
-        avg_reduced_duration_per_function = {}
-        for function_id in env.profile.get_function_profile().keys():
-            avg_duration_slo_per_function[function_id] = []
-            avg_harvest_cpu_per_function[function_id] = []
-            avg_harvest_memory_per_function[function_id] = []
-            avg_reduced_duration_per_function[function_id] = []
 
         for episode_per_exp in range(params.MAX_EPISODE_EVAL):
             # Record total number of events
@@ -197,13 +187,6 @@ def ensure_rm(
                     
                     request_record = info["request_record"]
 
-                    # Log per function
-                    for function_id in avg_duration_slo_per_function.keys():
-                        avg_duration_slo_per_function[function_id].append(request_record.get_avg_duration_slo_per_function(function_id))
-                        avg_harvest_cpu_per_function[function_id].append(request_record.get_avg_harvest_cpu_per_function(function_id))
-                        avg_harvest_memory_per_function[function_id].append(request_record.get_avg_harvest_memory_per_function(function_id))
-                        avg_reduced_duration_per_function[function_id].append(request_record.get_reduced_duration_per_function(function_id))
-                    
                     # Log function throughput
                     log_function_throughput(
                         overwrite=False, 
@@ -214,17 +197,20 @@ def ensure_rm(
                         function_throughput_list=function_throughput_list
                     )
 
-                    # Log per invocation
-                    log_per_invocation(
-                        overwrite=False,
+                    # Export csv per invocation
+                    export_csv_per_invocation(
                         rm_name=rm,
                         exp_id=exp_id,
-                        logger_wrapper=logger_wrapper,
-                        episode=episode, 
-                        duration_slo_per_invocation=request_record.get_duration_slo_per_invocation(),
-                        harvest_cpu_per_invocation=request_record.get_harvest_cpu_per_invocation(),
-                        harvest_memory_per_invocation=request_record.get_harvest_memory_per_invocation(),
-                        reduced_duration_per_invocation=request_record.get_reduced_duration_per_invocation()
+                        episode=episode,
+                        csv_per_invocation=request_record.get_csv_per_invocation()
+                    )
+
+                    # Export csv percentile
+                    export_csv_percentile(
+                        rm_name=rm,
+                        exp_id=exp_id,
+                        episode=episode,
+                        csv_percentile=request_record.get_csv_percentile()
                     )
                     
                     episode_done = True
@@ -250,16 +236,3 @@ def ensure_rm(
             acceleration_pecent_trend=acceleration_pecent_trend,
             timeout_num_trend=timeout_num_trend
         )
-
-        # Log per function
-        log_per_function(
-            overwrite=False, 
-            rm_name=rm, 
-            exp_id=exp_id,
-            logger_wrapper=logger_wrapper,
-            avg_duration_slo_per_function=avg_duration_slo_per_function,
-            avg_harvest_cpu_per_function=avg_harvest_cpu_per_function,
-            avg_harvest_memory_per_function=avg_harvest_memory_per_function,
-            avg_reduced_duration_per_function=avg_reduced_duration_per_function
-        )
-    
