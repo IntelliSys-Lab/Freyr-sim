@@ -185,3 +185,4 @@ simulations/serverless/ckpt/*
 
 # Azure Functions Tracecs
 simulations/serverless/azurefunctions-dataset2019/*
+!simulations/serverless/azurefunctions-dataset2019/exp_*

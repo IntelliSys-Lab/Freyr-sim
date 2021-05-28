@@ -725,16 +725,29 @@ class RequestRecord():
             avg_reduced_duration_per_function = total_reduced_duration_per_function / request_num
 
     def get_csv_per_invocation(self):
-        csv_per_invocation = []
-        for request in self.success_request_record:
-            # [Harvested CPU, Harvested Memory, RFET]
-            csv_per_invocation.append(
-                [request.get_cpu_user_defined() - request.get_cpu(), 
-                request.get_memory_user_defined() - request.get_memory(),
-                request.get_duration_slo()]
-            )
+        csv_cpu_pos_rfet = []
+        csv_cpu_zero_rfet = []
+        csv_cpu_neg_rfet = []
+        csv_memory_pos_rfet = []
+        csv_memory_zero_rfet = []
+        csv_memory_neg_rfet = []
 
-        return csv_per_invocation
+        for request in self.success_request_record:
+            if request.get_cpu_user_defined() - request.get_cpu() > 0:
+                csv_cpu_pos_rfet.append([request.get_duration_slo(), request.get_cpu() - request.get_cpu_user_defined() ])
+            elif request.get_cpu_user_defined() - request.get_cpu() == 0:
+                csv_cpu_zero_rfet.append([request.get_duration_slo(), request.get_cpu() - request.get_cpu_user_defined()])
+            else:
+                csv_cpu_neg_rfet.append([request.get_duration_slo(), request.get_cpu() - request.get_cpu_user_defined()])
+
+            if request.get_memory_user_defined() - request.get_memory() > 0:
+                csv_memory_pos_rfet.append([request.get_duration_slo(), request.get_memory() - request.get_memory_user_defined()])
+            elif request.get_memory_user_defined() - request.get_memory() == 0:
+                csv_memory_zero_rfet.append([request.get_duration_slo(), request.get_memory() - request.get_memory_user_defined()])
+            else:
+                csv_memory_neg_rfet.append([request.get_duration_slo(), request.get_memory() - request.get_memory_user_defined()])
+
+        return csv_cpu_pos_rfet, csv_cpu_zero_rfet, csv_cpu_neg_rfet, csv_memory_pos_rfet, csv_memory_zero_rfet, csv_memory_neg_rfet
 
     def get_csv_percentile(self):
         duration_per_invocation = []

@@ -220,7 +220,7 @@ def clean_old_samples(
 
 if __name__ == "__main__":
     azure_file_path = "azurefunctions-dataset2019/"
-    max_exp = 1
+    max_exp = 1000
     max_functions = 1000
     max_timestep = 60
     min_timestep = 60

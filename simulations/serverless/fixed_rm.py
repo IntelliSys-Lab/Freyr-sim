@@ -148,11 +148,17 @@ def fixed_rm(
                     )
 
                     # Export csv per invocation
+                    csv_cpu_pos_rfet, csv_cpu_zero_rfet, csv_cpu_neg_rfet, csv_memory_pos_rfet, csv_memory_zero_rfet, csv_memory_neg_rfet = request_record.get_csv_per_invocation()
                     export_csv_per_invocation(
                         rm_name=rm,
                         exp_id=exp_id,
                         episode=episode,
-                        csv_per_invocation=request_record.get_csv_per_invocation()
+                        csv_cpu_pos_rfet=csv_cpu_pos_rfet,
+                        csv_cpu_zero_rfet=csv_cpu_zero_rfet,
+                        csv_cpu_neg_rfet=csv_cpu_neg_rfet,
+                        csv_memory_pos_rfet=csv_memory_pos_rfet,
+                        csv_memory_zero_rfet=csv_memory_zero_rfet,
+                        csv_memory_neg_rfet=csv_memory_neg_rfet
                     )
 
                     # Export csv percentile

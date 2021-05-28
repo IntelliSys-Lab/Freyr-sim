@@ -200,14 +200,38 @@ def export_csv_per_invocation(
     rm_name,
     exp_id,
     episode,
-    csv_per_invocation
+    csv_cpu_pos_rfet,
+    csv_cpu_zero_rfet,
+    csv_cpu_neg_rfet,
+    csv_memory_pos_rfet,
+    csv_memory_zero_rfet,
+    csv_memory_neg_rfet
 ):
     file_path = "logs/"
-    file_name = "{}_{}_{}_per_invocation.csv".format(rm_name, exp_id, episode)
 
-    with open(file_path + file_name, "w", newline="") as f:
+    with open(file_path + "{}_{}_{}_cpu_pos_rfet.csv".format(rm_name, exp_id, episode), "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerows(csv_per_invocation)
+        writer.writerows(csv_cpu_pos_rfet)
+
+    with open(file_path + "{}_{}_{}_cpu_zero_rfet.csv".format(rm_name, exp_id, episode), "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerows(csv_cpu_zero_rfet)
+
+    with open(file_path + "{}_{}_{}_cpu_neg_rfet.csv".format(rm_name, exp_id, episode), "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerows(csv_cpu_neg_rfet)
+
+    with open(file_path + "{}_{}_{}_memory_pos_rfet.csv".format(rm_name, exp_id, episode), "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerows(csv_memory_pos_rfet)
+
+    with open(file_path + "{}_{}_{}_memory_zero_rfet.csv".format(rm_name, exp_id, episode), "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerows(csv_memory_zero_rfet)
+
+    with open(file_path + "{}_{}_{}_memory_neg_rfet.csv".format(rm_name, exp_id, episode), "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerows(csv_memory_neg_rfet)
 
 def export_csv_percentile(
     rm_name,
