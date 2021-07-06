@@ -1,1 +1,1 @@
-# LambdaRM
+# Freyr
