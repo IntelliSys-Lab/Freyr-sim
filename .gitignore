@@ -178,11 +178,11 @@ tutorial/*.html
 vizdoom.ini
 /vendor/
 
-# Simulation scratches
-simulations/serverless/logs/*
-simulations/serverless/figures/*
-simulations/serverless/ckpt/*
+# Simulation data
+experiment/logs/*
+experiment/figures/*
+experiment/ckpt/*
 
 # Azure Functions Tracecs
-simulations/serverless/azurefunctions-dataset2019/*
-!simulations/serverless/azurefunctions-dataset2019/exp_*
+experiment/azurefunctions-dataset2019/*
+!experiment/azurefunctions-dataset2019/exp_*
