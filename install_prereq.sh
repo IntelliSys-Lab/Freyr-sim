@@ -5,13 +5,13 @@
 #
 
 sudo apt install -y python3-pip
-pip3 install numpy pandas torch matplotlib scipy
+pip3 install numpy pandas torch
 
 #
 # Create ckpt, figures, logs and azure trace folders if not exist
 #
 
-folders="./ckpt ./figures ./logs ./azurefunctions_dataset2019"
+folders="./ckpt ./logs ./azurefunctions-dataset2019"
 
 for folder in $folders
 do

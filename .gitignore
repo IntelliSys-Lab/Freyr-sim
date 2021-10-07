@@ -179,10 +179,8 @@ vizdoom.ini
 /vendor/
 
 # Simulation data
-experiment/logs/*
-experiment/figures/*
-experiment/ckpt/*
+logs
+ckpt
 
 # Azure Functions Tracecs
-experiment/azurefunctions-dataset2019/*
-!experiment/azurefunctions-dataset2019/exp_*
+azurefunctions-dataset2019

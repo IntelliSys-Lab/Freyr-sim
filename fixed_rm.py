@@ -1,16 +1,13 @@
-import sys
+from env import Environment
 from params import WorkloadParameters, EnvParameters
 from logger import Logger
 from utils import log_trends, log_function_throughput, export_csv_percentile, export_csv_per_invocation
 import params
 
-
 #
 # Fixed provision strategy
 #
-def fixed_rm(
-    logger_wrapper
-):
+def fixed_rm(logger_wrapper):
     rm = "FixedRM"
 
     # Set up logger
@@ -39,12 +36,10 @@ def fixed_rm(
         )
 
         # Set up environment
-        env = gym.make(
-            "FaaS-v0", 
+        env = Environment(
             workload_params=workload_params,
             env_params=env_params
         )
-        env.seed(114514)
 
         # Trends recording
         reward_trend = []
@@ -189,4 +184,8 @@ def fixed_rm(
             acceleration_pecent_trend=acceleration_pecent_trend,
             timeout_num_trend=timeout_num_trend
         )
+
+if __name__ == "__main__":
+    logger_wrapper = Logger()
+    fixed_rm(logger_wrapper=logger_wrapper)
     

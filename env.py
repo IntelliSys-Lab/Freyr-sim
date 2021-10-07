@@ -1,10 +1,9 @@
-import sys
 import numpy as np
 import torch
-from faas_utils import SystemTime, Request, Cluster, RequestRecord, ResourceUtilsRecord
+from utils import SystemTime, Request, Cluster, RequestRecord, ResourceUtilsRecord
 from workload_generator import WorkloadGenerator
 
-        
+
 class Environment():
     """
     A serverless environment.

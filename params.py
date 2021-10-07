@@ -11,7 +11,8 @@ FAIL_PENALTY = 0
 
 # Training parameters
 AZURE_FILE_PATH = "azurefunctions-dataset2019/"
-EXP_TRAIN = [i for i in range(250)]
+# EXP_TRAIN = [i for i in range(250)]
+EXP_TRAIN = [0]
 EXP_EVAL = [0]
 MAX_EPISODE_TRAIN = 1
 MAX_EPISODE_EVAL = 1

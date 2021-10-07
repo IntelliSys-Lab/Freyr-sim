@@ -1,19 +1,13 @@
-import sys
-sys.path.append("../../gym")
-import time
-import gym
-
+from env import Environment
 from logger import Logger
 from ppo2_agent import PPO2Agent
-from gym.envs.serverless.faas_params import WorkloadParameters, EnvParameters
+from params import WorkloadParameters, EnvParameters
 from utils import log_trends, log_function_throughput, export_csv_percentile, export_csv_per_invocation
 import params
 
 
 
-def lambda_rm_eval(
-    logger_wrapper
-):
+def freyr_eval(logger_wrapper):
     rm = "LambdaRM_eval"
 
     # Set up logger
@@ -58,12 +52,10 @@ def lambda_rm_eval(
         )
 
         # Set up environment
-        env = gym.make(
-            "FaaS-v0", 
+        env = Environment(
             workload_params=workload_params,
             env_params=env_params
         )
-        env.seed(114514)
     
         # Trends recording
         reward_trend = []
@@ -210,3 +202,9 @@ def lambda_rm_eval(
             acceleration_pecent_trend=acceleration_pecent_trend,
             timeout_num_trend=timeout_num_trend
         )
+
+
+if __name__ == "__main__":
+    logger_wrapper = Logger()
+    freyr_eval(logger_wrapper=logger_wrapper)
+    

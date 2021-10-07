@@ -1346,7 +1346,7 @@ class Cluster():
                 home_server_index = (home_server_index + self.schedule_step_size) % self.cluster_size
                 i = i + 1
 
-        # If none of servers has available resources, randome pick one
+        # If none of servers has available resources, randomly pick one
         if is_scheduled is False:
             random_index = random.randint(0, self.cluster_size - 1)
             random_server = self.server_pool[random_index]

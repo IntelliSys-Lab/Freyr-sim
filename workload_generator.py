@@ -2,9 +2,8 @@ import pandas as pd
 import heapq
 import itertools
 import numpy as np
-import gym
-from gym.envs.serverless.faas_utils import Function, Profile, EventPQ
-from gym.envs.serverless.faas_params import FunctionParameters, EventPQParameters
+from utils import Function, Profile, EventPQ
+from params import FunctionParameters, EventPQParameters
 
 
 class WorkloadGenerator():
@@ -17,7 +16,7 @@ class WorkloadGenerator():
         cpu_cap_per_function,
         memory_cap_per_function,
         memory_mb_limit,
-        azure_file_path="../../simulation/serverless/azurefunctions-dataset2019/"
+        azure_file_path="experiment/azurefunctions-dataset2019/"
     ):
         self.azure_file_path = azure_file_path
         self.exp_id = exp_id

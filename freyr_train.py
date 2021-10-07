@@ -1,10 +1,7 @@
-import sys
-sys.path.append("../../gym")
 import numpy as np
 import torch
-import gym
-
-from gym.envs.serverless.faas_params import WorkloadParameters, EnvParameters
+from env import Environment
+from params import WorkloadParameters, EnvParameters
 from logger import Logger
 from ppo2_agent import PPO2Agent
 from utils import log_trends
@@ -15,9 +12,7 @@ import params
 # Policy gradient
 #
 
-def lambda_rm_train(
-    logger_wrapper
-):
+def freyr_train(logger_wrapper):
     rm = "LambdaRM_train"
 
     # Set up logger
@@ -63,12 +58,10 @@ def lambda_rm_train(
         )
 
         # Set up environment
-        env = gym.make(
-            "FaaS-v0", 
+        env = Environment(
             workload_params=workload_params,
             env_params=env_params
         )
-        env.seed(114514)
 
         # Trends recording
         reward_trend = []
@@ -241,9 +234,7 @@ if __name__ == "__main__":
     print("")
     print("Start training...")
 
-    lambda_rm_train(
-        logger_wrapper=logger_wrapper
-    )
+    freyr_train(logger_wrapper=logger_wrapper)
 
     print("")
     print("Training finished!")

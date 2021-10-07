@@ -9,10 +9,9 @@ class Logger():
     """
     def __init__(
         self, 
-        log_path=os.path.dirname(os.getcwd())+'/serverless/logs/'
+        log_path=os.path.dirname(os.getcwd())+'/Freyr-sim/logs/'
     ):
         self.log_path = log_path
-        
         self.logger = logging.getLogger()
         self.logger.setLevel(logging.DEBUG)
     
