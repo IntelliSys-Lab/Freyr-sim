@@ -51,18 +51,19 @@ class Function():
             cpu_delay_factor = 0
         else:
             cpu_delay_factor = (self.params.ideal_cpu - self.cpu) / (self.params.ideal_cpu - self.params.cpu_least_hint)
-        cpu_duration_increment = cpu_duration * cpu_delay_factor
+        self.cpu_duration_increment = cpu_duration * cpu_delay_factor
 
+        # TODO: fix memory duration
         memory_duration = (self.params.max_duration - self.params.min_duration) * 1 / (self.params.k + 1)
         memory_mb = self.memory * self.params.memory_mb_limit / self.params.memory_cap_per_function
         least_memory_mb = self.params.memory_least_hint * self.params.memory_mb_limit / self.params.memory_cap_per_function
-        if memory_mb >= self.params.ideal_memory:
+        if memory_mb >= np.random.choice(self.params.memory_percentiles,1):
             memory_delay_factor = 0
         else:
-            memory_delay_factor = (self.params.ideal_memory - memory_mb) / (self.params.ideal_memory - least_memory_mb)
-        memory_duration_increment = memory_duration * memory_delay_factor
+            memory_delay_factor = (np.random.choice(self.params.memory_percentiles,1) - memory_mb) / (np.random.choice(self.params.memory_percentiles,1) - least_memory_mb)
+        self.memory_duration_increment = memory_duration * memory_delay_factor
 
-        self.duration = int(self.params.min_duration + cpu_duration_increment + memory_duration_increment) + 1
+        self.duration = int(self.params.min_duration + self.cpu_duration_increment + self.memory_duration_increment) + 1
 
         # print("ideal_memory: {}, memory_mb: {}".format(self.params.ideal_memory, memory_mb))
         # print("cpu_delay_factor: {}".format(cpu_delay_factor))
@@ -89,7 +90,7 @@ class Function():
         return self.params.ideal_cpu
 
     def get_ideal_memory(self):
-        return np.clip(int(self.params.ideal_memory / self.params.memory_mb_limit * self.params.memory_cap_per_function) + 1, 1, self.params.memory_cap_per_function)
+        return np.clip(int(np.random.choice(self.params.memory_percentiles,1) / self.params.memory_mb_limit * self.params.memory_cap_per_function) + 1, 1, self.params.memory_cap_per_function)
 
     def get_cpu_user_defined(self):
         return self.params.cpu_user_defined
@@ -101,7 +102,7 @@ class Function():
         return self.params.min_duration
     
     def get_baseline(self):
-        return self.baseline
+        return np.random.choice(self.params.duration_samples,1) + self.cpu_duration_increment + self.memory_duration_increment + 1
 
 
 class Request():

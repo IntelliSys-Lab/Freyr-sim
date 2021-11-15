@@ -64,6 +64,8 @@ class FunctionParameters():
         self,
         ideal_cpu,
         ideal_memory,
+        memory_percentiles,
+        duration_samples,
         max_duration,
         min_duration,
         cpu_cap_per_function,
@@ -81,6 +83,8 @@ class FunctionParameters():
     ):
         self.ideal_cpu = ideal_cpu
         self.ideal_memory = ideal_memory
+        self.memory_percentiles = memory_percentiles
+        self.duration_samples = duration_samples
         self.max_duration = max_duration
         self.min_duration = min_duration
         self.cpu_cap_per_function = cpu_cap_per_function

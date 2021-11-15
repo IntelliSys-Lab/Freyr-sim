@@ -48,6 +48,17 @@ class WorkloadGenerator():
             invocation_trace = invocation_traces_dict[function_hash]
 
             # Memory
+            function_params_dict[function_hash]["memory_percentiles"] = list(map(int, [memory_trace['AverageAllocatedMb_pct1'], memory_trace['AverageAllocatedMb_pct5'],
+                memory_trace['AverageAllocatedMb_pct25'], memory_trace['AverageAllocatedMb_pct50'], memory_trace['AverageAllocatedMb_pct75'],
+                memory_trace['AverageAllocatedMb_pct95'], memory_trace['AverageAllocatedMb_pct99'], memory_trace['AverageAllocatedMb_pct100']
+            ]))
+
+            function_params_dict[function_hash]["duration_samples"] = list(map(float,
+            [
+                duration_trace['percentile_Average_0'],duration_trace['percentile_Average_1'],duration_trace['percentile_Average_25'],
+                duration_trace['percentile_Average_50'],duration_trace['percentile_Average_75'],duration_trace['percentile_Average_99'],
+                duration_trace['percentile_Average_100']
+            ] ))
             function_params_dict[function_hash]["ideal_memory"] = np.clip(int(memory_trace["Ideal"]), 1, self.memory_mb_limit)
             function_params_dict[function_hash]["ideal_cpu"] = np.clip(int(memory_trace["Ideal"]/cpu_level), 1, self.cpu_cap_per_function)
             function_params_dict[function_hash]["memory_least_hint"] = 1
@@ -77,6 +88,8 @@ class WorkloadGenerator():
             function_params = FunctionParameters(
                 ideal_cpu=function_params_dict[function_hash]["ideal_cpu"], 
                 ideal_memory=function_params_dict[function_hash]["ideal_memory"],
+                memory_percentiles= function_params_dict[function_hash]["memory_percentiles"],
+                duration_samples = function_params_dict[function_hash]["duration_samples"],
                 max_duration=function_params_dict[function_hash]["max_duration"],
                 min_duration=function_params_dict[function_hash]["min_duration"],
                 cpu_least_hint=function_params_dict[function_hash]["cpu_least_hint"],
